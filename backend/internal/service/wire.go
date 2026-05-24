@@ -437,6 +437,10 @@ func ProvideAPIKeyService(
 	return svc
 }
 
+func ProvideOpenAIFreePoolAdminService(adminService AdminService) openAIFreePoolAdminService {
+	return adminService
+}
+
 // ProviderSet is the Wire provider set for all services
 var ProviderSet = wire.NewSet(
 	// Core services
@@ -456,6 +460,7 @@ var ProviderSet = wire.NewSet(
 	ProvideBillingCacheService,
 	NewAnnouncementService,
 	NewAdminService,
+	ProvideOpenAIFreePoolAdminService,
 	NewGatewayService,
 	NewOpenAIGatewayService,
 	wire.Bind(new(AccountRuntimeBlocker), new(*OpenAIGatewayService)),

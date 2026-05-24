@@ -290,6 +290,15 @@
             </div>
             <span v-else class="text-sm text-gray-400 dark:text-dark-500">-</span>
           </template>
+          <template #cell-next_reset="{ row }">
+            <span class="text-sm text-gray-700 dark:text-gray-300">{{ getAccountOpenAIFreeNextReset(row) }}</span>
+          </template>
+          <template #cell-auto_pool="{ row }">
+            <span class="text-sm text-gray-700 dark:text-gray-300">{{ getAccountOpenAIFreeAutoPool(row) }}</span>
+          </template>
+          <template #cell-locked_proxy="{ row }">
+            <span class="text-sm text-gray-700 dark:text-gray-300">{{ getAccountOpenAIFreeLockedProxy(row) }}</span>
+          </template>
           <template #cell-rate_multiplier="{ row }">
             <span class="text-sm font-mono text-gray-700 dark:text-gray-300">
               {{ (row.rate_multiplier ?? 1).toFixed(2) }}x
@@ -344,10 +353,38 @@
     <CreateAccountModal :show="showCreate" :proxies="proxies" :groups="groups" @close="showCreate = false" @created="reload" />
     <EditAccountModal :show="showEdit" :account="edAcc" :proxies="proxies" :groups="groups" @close="showEdit = false" @updated="handleAccountUpdated" />
     <ReAuthAccountModal :show="showReAuth" :account="reAuthAcc" @close="closeReAuthModal" @reauthorized="handleAccountUpdated" />
-    <AccountTestModal :show="showTest" :account="testingAcc" @close="closeTestModal" />
+    <AccountTestModal
+      :show="showTest"
+      :account="testingAcc"
+      @close="closeTestModal"
+      @account-status-updated="handleAccountUpdated"
+    />
     <AccountStatsModal :show="showStats" :account="statsAcc" @close="closeStatsModal" />
     <ScheduledTestsPanel :show="showSchedulePanel" :account-id="scheduleAcc?.id ?? null" :model-options="scheduleModelOptions" @close="closeSchedulePanel" />
-    <AccountActionMenu :show="menu.show" :account="menu.acc" :position="menu.pos" @close="menu.show = false" @test="handleTest" @stats="handleViewStats" @schedule="handleSchedule" @reauth="handleReAuth" @refresh-token="handleRefresh" @recover-state="handleRecoverState" @reset-quota="handleResetQuota" @set-privacy="handleSetPrivacy" />
+    <AccountActionMenu
+      :show="menu.show"
+      :account="menu.acc"
+      :position="menu.pos"
+      @close="menu.show = false"
+      @test="handleTest"
+      @stats="handleViewStats"
+      @schedule="handleSchedule"
+      @reauth="handleReAuth"
+      @refresh-token="handleRefresh"
+      @recover-state="handleRecoverState"
+      @reset-quota="handleResetQuota"
+      @set-privacy="handleSetPrivacy"
+      @openai-free-pool-lock="handleOpenAIFreePoolLock"
+      @openai-free-pool-unlock="handleUnlockOpenAIFreePool"
+    />
+    <OpenAIFreePoolLockModal
+      :show="showOpenAIFreePoolLockModal"
+      :account="openAIFreePoolLockAccount"
+      :pools="openAIFreePoolLockOptions"
+      :submitting="openAIFreePoolLockSubmitting"
+      @close="showOpenAIFreePoolLockModal = false"
+      @submit="handleSubmitOpenAIFreePoolLock"
+    />
     <SyncFromCrsModal :show="showSync" @close="showSync = false" @synced="reload" />
     <ImportDataModal :show="showImportData" @close="showImportData = false" @imported="handleDataImported" />
     <BulkEditAccountModal
@@ -394,6 +431,7 @@ import AccountTableActions from '@/components/admin/account/AccountTableActions.
 import AccountTableFilters from '@/components/admin/account/AccountTableFilters.vue'
 import AccountBulkActionsBar from '@/components/admin/account/AccountBulkActionsBar.vue'
 import AccountActionMenu from '@/components/admin/account/AccountActionMenu.vue'
+import OpenAIFreePoolLockModal from '@/components/admin/account/OpenAIFreePoolLockModal.vue'
 import ImportDataModal from '@/components/admin/account/ImportDataModal.vue'
 import ReAuthAccountModal from '@/components/admin/account/ReAuthAccountModal.vue'
 import AccountTestModal from '@/components/admin/account/AccountTestModal.vue'
@@ -411,7 +449,15 @@ import ErrorPassthroughRulesModal from '@/components/admin/ErrorPassthroughRules
 import TLSFingerprintProfilesModal from '@/components/admin/TLSFingerprintProfilesModal.vue'
 import { buildOpenAIUsageRefreshKey } from '@/utils/accountUsageRefresh'
 import { formatDateTime, formatRelativeTime } from '@/utils/format'
-import type { Account, AccountPlatform, AccountType, Proxy as AccountProxy, AdminGroup, WindowStats, ClaudeModel } from '@/types'
+import type {
+  Account,
+  AccountPlatform,
+  AccountType,
+  Proxy as AccountProxy,
+  AdminGroup,
+  WindowStats,
+  ClaudeModel
+} from '@/types'
 
 const { t } = useI18n()
 const appStore = useAppStore()
@@ -487,12 +533,21 @@ const scheduleModelOptions = ref<SelectOption[]>([])
 const togglingSchedulable = ref<number | null>(null)
 const menu = reactive<{show:boolean, acc:Account|null, pos:{top:number, left:number}|null}>({ show: false, acc: null, pos: null })
 const exportingData = ref(false)
+const showOpenAIFreePoolLockModal = ref(false)
+const openAIFreePoolLockSubmitting = ref(false)
+const openAIFreePoolLockAccount = ref<{
+  accountId: number
+  accountName: string
+  currentGroupName?: string
+  currentProxyName?: string
+  lockGroupId?: number
+} | null>(null)
 
 // Account tools dropdown
 const showAccountToolsDropdown = ref(false)
 const accountToolsDropdownRef = ref<HTMLElement | null>(null)
 const hiddenColumns = reactive<Set<string>>(new Set())
-const DEFAULT_HIDDEN_COLUMNS = ['today_stats', 'proxy', 'notes', 'priority', 'rate_multiplier']
+const DEFAULT_HIDDEN_COLUMNS = ['today_stats', 'proxy', 'notes', 'priority', 'rate_multiplier', 'next_reset', 'auto_pool', 'locked_proxy']
 const HIDDEN_COLUMNS_KEY = 'account-hidden-columns'
 
 // Sorting settings
@@ -883,6 +938,7 @@ const shouldReplaceAutoRefreshRow = (current: Account, next: Account) => {
 const syncAccountRefs = (nextAccount: Account) => {
   if (edAcc.value?.id === nextAccount.id) edAcc.value = nextAccount
   if (reAuthAcc.value?.id === nextAccount.id) reAuthAcc.value = nextAccount
+  if (testingAcc.value?.id === nextAccount.id) testingAcc.value = nextAccount
   if (tempUnschedAcc.value?.id === nextAccount.id) tempUnschedAcc.value = nextAccount
   if (deletingAcc.value?.id === nextAccount.id) deletingAcc.value = nextAccount
   if (menu.acc?.id === nextAccount.id) menu.acc = nextAccount
@@ -961,6 +1017,90 @@ const handleManualRefresh = async () => {
   await load()
   // Force usage cells to refetch /usage on explicit user refresh.
   usageManualRefreshToken.value += 1
+}
+
+const getAccountOpenAIFreeNextReset = (row: Account) => {
+  const resetAt = typeof row.extra?.codex_7d_reset_at === 'string' ? row.extra.codex_7d_reset_at : ''
+  if (!resetAt) return t('admin.accounts.openaiFreePool.unknown')
+  return formatDateTime(new Date(resetAt))
+}
+
+const getAccountOpenAIFreeAutoPool = (row: Account) => {
+  if (row.extra?.auto_pool_source !== 'openai_free_pool_v1') return '-'
+  const lockedGroupID = Number(row.extra?.auto_pool_group_id ?? 0)
+  if (!lockedGroupID) return t('admin.accounts.openaiFreePool.locked')
+  return groups.value.find(group => group.id === lockedGroupID)?.name || `${t('admin.accounts.openaiFreePool.locked')} #${lockedGroupID}`
+}
+
+const getAccountOpenAIFreeLockedProxy = (row: Account) => {
+  if (row.extra?.auto_pool_source !== 'openai_free_pool_v1') return '-'
+  const lockedProxyID = Number(row.extra?.auto_pool_proxy_id ?? 0)
+  if (!lockedProxyID) return '-'
+  return proxies.value.find(proxy => proxy.id === lockedProxyID)?.name || `#${lockedProxyID}`
+}
+
+const openAIFreePoolLockOptions = computed(() => {
+  return groups.value
+    .filter(group => {
+      const name = group.name.toLowerCase()
+      return group.platform === 'openai' && name !== 'default' && name !== 'plus'
+    })
+    .slice(0, 5)
+    .map((group, index) => ({
+      groupId: group.id,
+      groupName: group.name,
+      proxyId: proxies.value[index]?.id ?? 0,
+      proxyName: proxies.value[index]?.name ?? '-'
+    }))
+    .filter(option => option.proxyId > 0)
+})
+
+const isOpenAIFreeAccount = (account: Account | null | undefined) => {
+  if (!account || account.platform !== 'openai') return false
+  const planType = typeof account.credentials?.plan_type === 'string' ? account.credentials.plan_type : ''
+  return planType.toLowerCase() === 'free'
+}
+
+const handleOpenAIFreePoolLock = (account: Account) => {
+  if (!isOpenAIFreeAccount(account)) return
+  openAIFreePoolLockAccount.value = {
+    accountId: account.id,
+    accountName: account.name,
+    currentGroupName: account.groups?.[0]?.name,
+    currentProxyName: account.proxy?.name,
+    lockGroupId: Number(account.extra?.auto_pool_group_id ?? 0) || undefined
+  }
+  showOpenAIFreePoolLockModal.value = true
+}
+
+const handleSubmitOpenAIFreePoolLock = async (payload: { account_id: number; target_group_id: number }) => {
+  openAIFreePoolLockSubmitting.value = true
+  try {
+    await adminAPI.accounts.lockOpenAIFreePoolAccount(payload)
+    showOpenAIFreePoolLockModal.value = false
+    appStore.showSuccess(t('admin.openaiFreePools.lockSuccess'))
+    await reload()
+  } catch (error: any) {
+    console.error('Failed to lock OpenAI free pool account:', error)
+    appStore.showError(error?.message || t('admin.openaiFreePools.lockFailed'))
+  } finally {
+    openAIFreePoolLockSubmitting.value = false
+  }
+}
+
+const handleUnlockOpenAIFreePool = async (account: Account) => {
+  if (!isOpenAIFreeAccount(account)) return
+  openAIFreePoolLockSubmitting.value = true
+  try {
+    await adminAPI.accounts.unlockOpenAIFreePoolAccount(account.id)
+    appStore.showSuccess(t('admin.openaiFreePools.unlockSuccess'))
+    await reload()
+  } catch (error: any) {
+    console.error('Failed to unlock OpenAI free pool account:', error)
+    appStore.showError(error?.message || t('admin.openaiFreePools.unlockFailed'))
+  } finally {
+    openAIFreePoolLockSubmitting.value = false
+  }
 }
 
 const closeAccountToolsDropdown = () => {
@@ -1124,6 +1264,9 @@ const allColumns = computed(() => {
   c.push(
     { key: 'usage', label: t('admin.accounts.columns.usageWindows'), sortable: false },
     { key: 'proxy', label: t('admin.accounts.columns.proxy'), sortable: false },
+    { key: 'next_reset', label: t('admin.accounts.columns.nextReset'), sortable: false },
+    { key: 'auto_pool', label: t('admin.accounts.columns.autoPool'), sortable: false },
+    { key: 'locked_proxy', label: t('admin.accounts.columns.lockedProxy'), sortable: false },
     { key: 'priority', label: t('admin.accounts.columns.priority'), sortable: true },
     { key: 'rate_multiplier', label: t('admin.accounts.columns.billingRateMultiplier'), sortable: true },
     { key: 'last_used_at', label: t('admin.accounts.columns.lastUsed'), sortable: true },
@@ -1549,8 +1692,22 @@ const handleRefresh = async (a: Account) => {
     const updated = await adminAPI.accounts.refreshCredentials(a.id)
     patchAccountInList(updated)
     enterAutoRefreshSilentWindow()
-  } catch (error) {
+    appStore.showSuccess(t('admin.accounts.bulkActions.singleRefreshSuccess', { name: updated.name || a.name }))
+  } catch (error: any) {
     console.error('Failed to refresh credentials:', error)
+    try {
+      const latest = await adminAPI.accounts.getById(a.id)
+      patchAccountInList(latest)
+      enterAutoRefreshSilentWindow()
+    } catch (syncError) {
+      console.error('Failed to sync account after refresh error:', syncError)
+    }
+    const message =
+      error?.response?.data?.message ||
+      error?.response?.data?.error ||
+      error?.message ||
+      t('admin.accounts.bulkActions.singleRefreshFailed')
+    appStore.showError(message)
   }
 }
 const handleRecoverState = async (a: Account) => {

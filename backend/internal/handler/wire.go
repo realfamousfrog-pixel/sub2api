@@ -79,6 +79,51 @@ func ProvideSystemHandler(updateService *service.UpdateService, lockService *ser
 	return admin.NewSystemHandler(updateService, lockService)
 }
 
+func ProvideAdminAccountHandler(
+	adminService service.AdminService,
+	openAIFreePoolService *service.OpenAIFreePoolService,
+	oauthService *service.OAuthService,
+	openaiOAuthService *service.OpenAIOAuthService,
+	geminiOAuthService *service.GeminiOAuthService,
+	antigravityOAuthService *service.AntigravityOAuthService,
+	rateLimitService *service.RateLimitService,
+	accountUsageService *service.AccountUsageService,
+	accountTestService *service.AccountTestService,
+	concurrencyService *service.ConcurrencyService,
+	crsSyncService *service.CRSSyncService,
+	sessionLimitCache service.SessionLimitCache,
+	rpmCache service.RPMCache,
+	tokenCacheInvalidator service.TokenCacheInvalidator,
+) *admin.AccountHandler {
+	h := admin.NewAccountHandler(
+		adminService,
+		oauthService,
+		openaiOAuthService,
+		geminiOAuthService,
+		antigravityOAuthService,
+		rateLimitService,
+		accountUsageService,
+		accountTestService,
+		concurrencyService,
+		crsSyncService,
+		sessionLimitCache,
+		rpmCache,
+		tokenCacheInvalidator,
+	)
+	h.SetOpenAIFreePoolService(openAIFreePoolService)
+	return h
+}
+
+func ProvideAdminDashboardHandler(
+	dashboardService *service.DashboardService,
+	aggregationService *service.DashboardAggregationService,
+	openAIFreePoolService *service.OpenAIFreePoolService,
+) *admin.DashboardHandler {
+	h := admin.NewDashboardHandler(dashboardService, aggregationService)
+	h.SetOpenAIFreePoolService(openAIFreePoolService)
+	return h
+}
+
 // ProvideSettingHandler creates SettingHandler with version from BuildInfo
 func ProvideSettingHandler(settingService *service.SettingService, buildInfo BuildInfo, notificationEmailService *service.NotificationEmailService) *SettingHandler {
 	h := NewSettingHandler(settingService, buildInfo.Version)
@@ -154,10 +199,11 @@ var ProviderSet = wire.NewSet(
 	NewAvailableChannelHandler,
 
 	// Admin handlers
-	admin.NewDashboardHandler,
+	ProvideAdminDashboardHandler,
 	admin.NewUserHandler,
 	admin.NewGroupHandler,
-	admin.NewAccountHandler,
+	service.NewOpenAIFreePoolService,
+	ProvideAdminAccountHandler,
 	admin.NewAnnouncementHandler,
 	admin.NewDataManagementHandler,
 	admin.NewBackupHandler,

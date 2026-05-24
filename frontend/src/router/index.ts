@@ -489,6 +489,18 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/admin/openai-free-pools',
+    name: 'AdminOpenAIFreePools',
+    component: () => import('@/views/admin/OpenAIFreePoolsView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'OpenAI Free 分池',
+      titleKey: 'admin.openaiFreePools.title',
+      descriptionKey: 'admin.openaiFreePools.description'
+    }
+  },
+  {
     path: '/admin/announcements',
     name: 'AdminAnnouncements',
     component: () => import('@/views/admin/AnnouncementsView.vue'),

@@ -8,7 +8,7 @@
     <div class="space-y-4">
       <!-- Account Info Card -->
       <div
-        v-if="account"
+        v-if="activeAccount"
         class="flex items-center justify-between rounded-xl border border-gray-200 bg-gradient-to-r from-gray-50 to-gray-100 p-3 dark:border-dark-500 dark:from-dark-700 dark:to-dark-600"
       >
         <div class="flex items-center gap-3">
@@ -18,12 +18,12 @@
             <Icon name="play" size="md" class="text-white" :stroke-width="2" />
           </div>
           <div>
-            <div class="font-semibold text-gray-900 dark:text-gray-100">{{ account.name }}</div>
+            <div class="font-semibold text-gray-900 dark:text-gray-100">{{ activeAccount.name }}</div>
             <div class="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
               <span
                 class="rounded bg-gray-200 px-1.5 py-0.5 text-[10px] font-medium uppercase dark:bg-dark-500"
               >
-                {{ account.type }}
+                {{ activeAccount.type }}
               </span>
               <span>{{ t('admin.accounts.account') }}</span>
             </div>
@@ -32,12 +32,12 @@
         <span
           :class="[
             'rounded-full px-2.5 py-1 text-xs font-semibold',
-            account.status === 'active'
+            activeAccount.status === 'active'
               ? 'bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-400'
               : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400'
           ]"
         >
-          {{ account.status }}
+          {{ activeAccount.status }}
         </span>
       </div>
 
@@ -272,9 +272,11 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'close'): void
+  (e: 'account-status-updated', account: Account): void
 }>()
 
 const terminalRef = ref<HTMLElement | null>(null)
+const displayAccount = ref<Account | null>(props.account)
 const status = ref<'idle' | 'connecting' | 'success' | 'error'>('idle')
 const outputLines = ref<OutputLine[]>([])
 const streamingContent = ref('')
@@ -308,6 +310,8 @@ const supportsOpenAIImageTest = computed(() => {
 
 const supportsImageTest = computed(() => supportsGeminiImageTest.value || supportsOpenAIImageTest.value)
 
+const activeAccount = computed(() => displayAccount.value ?? props.account)
+
 const sortTestModels = (models: ClaudeModel[]) => {
   const priorityMap = new Map(prioritizedGeminiModels.map((id, index) => [id, index]))
 
@@ -324,6 +328,7 @@ watch(
   () => props.show,
   async (newVal) => {
     if (newVal && props.account) {
+      displayAccount.value = props.account
       testPrompt.value = ''
       testMode.value = 'default'
       resetState()
@@ -334,6 +339,13 @@ watch(
   }
 )
 
+watch(
+  () => props.account,
+  (nextAccount) => {
+    displayAccount.value = nextAccount
+  }
+)
+
 watch(selectedModelId, () => {
   if (supportsImageTest.value && !testPrompt.value.trim()) {
     testPrompt.value = t('admin.accounts.imagePromptDefault')
@@ -341,18 +353,18 @@ watch(selectedModelId, () => {
 })
 
 const loadAvailableModels = async () => {
-  if (!props.account) return
+  if (!activeAccount.value) return
 
   loadingModels.value = true
   selectedModelId.value = '' // Reset selection before loading
   try {
-    const models = await adminAPI.accounts.getAvailableModels(props.account.id)
-    availableModels.value = props.account.platform === 'gemini' || props.account.platform === 'antigravity'
+    const models = await adminAPI.accounts.getAvailableModels(activeAccount.value.id)
+    availableModels.value = activeAccount.value.platform === 'gemini' || activeAccount.value.platform === 'antigravity'
       ? sortTestModels(models)
       : models
     // Default selection by platform
     if (availableModels.value.length > 0) {
-      if (props.account.platform === 'gemini') {
+      if (activeAccount.value.platform === 'gemini') {
         selectedModelId.value = availableModels.value[0].id
       } else {
         // Try to select Sonnet as default, otherwise use first model
@@ -396,6 +408,28 @@ const addLine = (text: string, className: string = 'text-gray-300') => {
   scrollToBottom()
 }
 
+const buildOutputText = () => outputLines.value.map((line) => line.text).join('\n')
+
+const shouldRefreshAccountStatus = (message: string) => {
+  if (!message) return false
+  const normalized = message.toLowerCase()
+  return normalized.includes('401') && normalized.includes('token_invalidated')
+}
+
+const syncAccountStatusIfNeeded = async (message: string) => {
+  const account = activeAccount.value
+  if (!account || !shouldRefreshAccountStatus(message)) return
+
+  try {
+    const latestAccount = await adminAPI.accounts.getById(account.id)
+    if (latestAccount.status !== 'error') return
+    displayAccount.value = latestAccount
+    emit('account-status-updated', latestAccount)
+  } catch (error) {
+    console.error('Failed to refresh account status after test error:', error)
+  }
+}
+
 const scrollToBottom = async () => {
   await nextTick()
   if (terminalRef.value) {
@@ -404,12 +438,12 @@ const scrollToBottom = async () => {
 }
 
 const startTest = async () => {
-  if (!props.account || !selectedModelId.value) return
+  if (!activeAccount.value || !selectedModelId.value) return
 
   resetState()
   status.value = 'connecting'
-  addLine(t('admin.accounts.startingTestForAccount', { name: props.account.name }), 'text-blue-400')
-  addLine(t('admin.accounts.testAccountTypeLabel', { type: props.account.type }), 'text-gray-400')
+  addLine(t('admin.accounts.startingTestForAccount', { name: activeAccount.value.name }), 'text-blue-400')
+  addLine(t('admin.accounts.testAccountTypeLabel', { type: activeAccount.value.type }), 'text-gray-400')
   addLine('', 'text-gray-300')
 
   abortStream()
@@ -418,7 +452,7 @@ const startTest = async () => {
 
   try {
     // Create EventSource for SSE
-    const url = `/api/v1/admin/accounts/${props.account.id}/test`
+    const url = `/api/v1/admin/accounts/${activeAccount.value.id}/test`
 
     // Use fetch with streaming for SSE since EventSource doesn't support POST
     const response = await fetch(url, {
@@ -478,6 +512,7 @@ const startTest = async () => {
     const msg = error instanceof Error ? error.message : 'Unknown error'
     errorMessage.value = msg
     addLine(`Error: ${msg}`, 'text-red-400')
+    await syncAccountStatusIfNeeded(`${buildOutputText()}\n${msg}`)
   }
 }
 
@@ -541,6 +576,9 @@ const handleEvent = (event: {
         status.value = 'error'
         errorMessage.value = event.error || 'Test failed'
       }
+      if (!event.success) {
+        void syncAccountStatusIfNeeded(`${buildOutputText()}\n${event.error || errorMessage.value}`)
+      }
       break
 
     case 'error':
@@ -550,6 +588,7 @@ const handleEvent = (event: {
         addLine(streamingContent.value, 'text-green-300')
         streamingContent.value = ''
       }
+      void syncAccountStatusIfNeeded(`${buildOutputText()}\n${errorMessage.value}`)
       break
   }
 }
