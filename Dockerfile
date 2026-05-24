@@ -20,11 +20,12 @@ FROM ${NODE_IMAGE} AS frontend-builder
 
 WORKDIR /app/frontend
 
-# Install pnpm (pinned to v9 to match CI and keep builds reproducible)
-RUN corepack enable && corepack prepare pnpm@9 --activate
+# Install pnpm pinned to the lockfile-compatible major version.
+RUN corepack enable && corepack prepare pnpm@11.1.1 --activate
 
-# Install dependencies first (better caching)
-COPY frontend/package.json frontend/pnpm-lock.yaml ./
+# Install dependency metadata first (better caching)
+# pnpm's frozen lockfile validation also depends on workspace and npm config.
+COPY frontend/package.json frontend/pnpm-lock.yaml frontend/pnpm-workspace.yaml frontend/.npmrc ./
 RUN pnpm install --frozen-lockfile
 
 # Copy frontend source and build
