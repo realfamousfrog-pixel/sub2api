@@ -44,7 +44,26 @@ Sub2API is an AI API gateway platform designed to distribute and manage API quot
 - **Rate Limiting** - Configurable request and token rate limits
 - **Built-in Payment System** - Supports EasyPay, Alipay, WeChat Pay, and Stripe for user self-service top-up, no separate payment service needed ([Configuration Guide](docs/PAYMENT.md))
 - **Admin Dashboard** - Web interface for monitoring and management
+- **OpenAI Free Pooling Board** - Admin-only preview/apply workflow for assigning OpenAI free accounts from a default intake group into five proxy-bound free pools, with reset-date-based pool clustering and a future reset forecast card based on `extra.codex_7d_reset_at`
 - **External System Integration** - Embed external systems (e.g. ticketing) via iframe to extend the admin dashboard
+
+### Admin OpenAI Free Pooling
+
+The admin dashboard, account table, and dedicated `OpenAI Free 分池` admin page include an OpenAI free pooling workflow intended for source-level deployment customization:
+
+- Scope: only `platform=openai` accounts with `credentials.plan_type=free`
+- Config: one `default` intake group, one excluded `plus` group, and exactly five `{group, proxy}` pool bindings
+- Preview/apply: the dedicated admin page auto-loads a preview, supports manual apply, and default behavior only moves new free accounts that are still in the configured `default` group; target pools are chosen by clustering accounts with the same `codex_7d_reset_at` day into the same free pool whenever possible, while existing stable accounts stay in place unless force rebalance is explicitly enabled
+- Locks: operators can manually lock a managed OpenAI free account to one of the configured five free pools; the bound proxy follows the selected pool automatically, and unlocking only removes the manual override without forcing an immediate move
+- Forecast: the dashboard card aggregates upcoming resets from `extra.codex_7d_reset_at`, renders them as a line chart with expandable day details, and keeps accounts without that field in `Unknown`
+- Status feedback: when an admin account test returns an OAuth-style `401` / `token_invalidated` failure, the frontend immediately re-fetches that account and switches the badge to the persisted `error` state if the backend has already marked it; manual `Refresh Token` now also shows explicit success/failure toast feedback and re-syncs the row after a failure so persisted `error` status becomes visible without waiting for the next list poll
+
+Current boundaries:
+
+- This is an admin-side workflow only; it does not change user-facing group selection behavior
+- First version is manual preview/apply only; there is no background scheduled execution
+- Background token refresh is not a full account health inspection; accounts that are not used, not manually tested, and not manually refreshed may still remain visually `active` until some real refresh/test path touches them
+- Source-code tests can validate planner logic, API contracts, and UI rendering, but they do not prove production mappings, live account metadata completeness, or zero-impact behavior on an already running deployment
 
 ## ❤️ Sponsors
 
