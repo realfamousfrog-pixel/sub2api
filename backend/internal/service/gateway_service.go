@@ -77,6 +77,11 @@ type accountWithLoad struct {
 	loadInfo *AccountLoadInfo
 }
 
+type accountOrderingOptions struct {
+	preferOAuth                 bool
+	preferEarlierOpenAIFreeReset bool
+}
+
 var ForceCacheBillingContextKey = forceCacheBillingKeyType{}
 
 var (
@@ -1767,27 +1772,9 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 			}
 
 			if len(routingAvailable) > 0 {
-				// 排序：优先级 > 负载率 > 最后使用时间
-				sort.SliceStable(routingAvailable, func(i, j int) bool {
-					a, b := routingAvailable[i], routingAvailable[j]
-					if a.account.Priority != b.account.Priority {
-						return a.account.Priority < b.account.Priority
-					}
-					if a.loadInfo.LoadRate != b.loadInfo.LoadRate {
-						return a.loadInfo.LoadRate < b.loadInfo.LoadRate
-					}
-					switch {
-					case a.account.LastUsedAt == nil && b.account.LastUsedAt != nil:
-						return true
-					case a.account.LastUsedAt != nil && b.account.LastUsedAt == nil:
-						return false
-					case a.account.LastUsedAt == nil && b.account.LastUsedAt == nil:
-						return false
-					default:
-						return a.account.LastUsedAt.Before(*b.account.LastUsedAt)
-					}
-				})
-				shuffleWithinSortGroups(routingAvailable)
+				ordering := s.resolveAccountOrderingOptions(ctx, groupID, routingAvailableAccounts(routingAvailable), preferOAuth)
+				sortAccountWithLoadByPriorityLoadAndLastUsed(routingAvailable, ordering)
+				shuffleWithinSortGroups(routingAvailable, ordering)
 
 				// 4. 尝试获取槽位
 				for _, item := range routingAvailable {
@@ -2033,7 +2020,8 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 			// 2. 取负载率最低的集合
 			candidates = filterByMinLoadRate(candidates)
 			// 3. LRU 选择最久未用的账号
-			selected := selectByLRU(candidates, preferOAuth)
+			ordering := s.resolveAccountOrderingOptions(ctx, groupID, accountPtrsFromAccountWithLoad(candidates), preferOAuth)
+			selected := selectByLRU(candidates, ordering)
 			if selected == nil {
 				break
 			}
@@ -2064,7 +2052,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 	}
 
 	// ============ Layer 3: 兜底排队 ============
-	s.sortCandidatesForFallback(candidates, preferOAuth, cfg.FallbackSelectionMode)
+	s.sortCandidatesForFallback(ctx, groupID, candidates, preferOAuth, cfg.FallbackSelectionMode)
 	for _, acc := range candidates {
 		// 会话数量限制检查（等待计划也需要占用会话配额）
 		if !s.checkAndRegisterSession(ctx, acc, sessionHash) {
@@ -2082,7 +2070,8 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 
 func (s *GatewayService) tryAcquireByLegacyOrder(ctx context.Context, candidates []*Account, groupID *int64, sessionHash string, preferOAuth bool) (*AccountSelectionResult, bool, error) {
 	ordered := append([]*Account(nil), candidates...)
-	sortAccountsByPriorityAndLastUsed(ordered, preferOAuth)
+	ordering := s.resolveAccountOrderingOptions(ctx, groupID, ordered, preferOAuth)
+	sortAccountsByPriorityAndLastUsed(ordered, ordering)
 
 	for _, acc := range ordered {
 		result, err := s.tryAcquireAccountSlot(ctx, acc.ID, acc.Concurrency)
@@ -2146,6 +2135,73 @@ func (s *GatewayService) resolveGroupByID(ctx context.Context, groupID int64) (*
 		return nil, fmt.Errorf("get group failed: %w", err)
 	}
 	return group, nil
+}
+
+func (s *GatewayService) resolveAccountOrderingOptions(ctx context.Context, groupID *int64, accounts []*Account, preferOAuth bool) accountOrderingOptions {
+	return accountOrderingOptions{
+		preferOAuth:                 preferOAuth,
+		preferEarlierOpenAIFreeReset: s.shouldPreferEarlierOpenAIFreeReset(ctx, groupID, accounts),
+	}
+}
+
+func (s *GatewayService) shouldPreferEarlierOpenAIFreeReset(ctx context.Context, groupID *int64, accounts []*Account) bool {
+	if groupID == nil || len(accounts) == 0 {
+		return false
+	}
+	if group := s.groupFromContext(ctx, *groupID); group != nil {
+		return isOpenAIFreeResetPriorityGroup(group.Name)
+	}
+	for _, account := range accounts {
+		if account == nil {
+			continue
+		}
+		if isOpenAIFreeResetPriorityGroupFromAccount(account, *groupID) {
+			return true
+		}
+	}
+	if s.groupRepo == nil {
+		return false
+	}
+	group, err := s.groupRepo.GetByID(ctx, *groupID)
+	if err != nil || group == nil {
+		return false
+	}
+	return isOpenAIFreeResetPriorityGroup(group.Name)
+}
+
+func isOpenAIFreeResetPriorityGroup(name string) bool {
+	return strings.TrimSpace(name) == "账号池"
+}
+
+func isOpenAIFreeResetPriorityGroupFromAccount(account *Account, groupID int64) bool {
+	if account == nil {
+		return false
+	}
+	for _, group := range account.Groups {
+		if group != nil && group.ID == groupID {
+			return isOpenAIFreeResetPriorityGroup(group.Name)
+		}
+	}
+	for _, relation := range account.AccountGroups {
+		if relation.Group != nil && relation.GroupID == groupID {
+			return isOpenAIFreeResetPriorityGroup(relation.Group.Name)
+		}
+	}
+	return false
+}
+
+func routingAvailableAccounts(items []accountWithLoad) []*Account {
+	return accountPtrsFromAccountWithLoad(items)
+}
+
+func accountPtrsFromAccountWithLoad(items []accountWithLoad) []*Account {
+	accounts := make([]*Account, 0, len(items))
+	for _, item := range items {
+		if item.account != nil {
+			accounts = append(accounts, item.account)
+		}
+	}
+	return accounts
 }
 
 func (s *GatewayService) ResolveGroupByID(ctx context.Context, groupID int64) (*Group, error) {
@@ -2787,7 +2843,7 @@ func filterByMinLoadRate(accounts []accountWithLoad) []accountWithLoad {
 
 // selectByLRU 从集合中选择最久未用的账号
 // 如果有多个账号具有相同的最小 LastUsedAt，则随机选择一个
-func selectByLRU(accounts []accountWithLoad, preferOAuth bool) *accountWithLoad {
+func selectByLRU(accounts []accountWithLoad, ordering accountOrderingOptions) *accountWithLoad {
 	if len(accounts) == 0 {
 		return nil
 	}
@@ -2795,40 +2851,22 @@ func selectByLRU(accounts []accountWithLoad, preferOAuth bool) *accountWithLoad 
 		return &accounts[0]
 	}
 
-	// 1. 找到最小的 LastUsedAt（nil 被视为最小）
-	var minTime *time.Time
-	hasNil := false
-	for _, acc := range accounts {
-		if acc.account.LastUsedAt == nil {
-			hasNil = true
-			break
+	sortAccountWithLoadByPriorityLoadAndLastUsed(accounts, ordering)
+	first := accounts[0]
+	candidateIdxs := []int{0}
+	for i := 1; i < len(accounts); i++ {
+		if sameAccountWithLoadGroup(first, accounts[i], ordering) {
+			candidateIdxs = append(candidateIdxs, i)
+			continue
 		}
-		if minTime == nil || acc.account.LastUsedAt.Before(*minTime) {
-			minTime = acc.account.LastUsedAt
-		}
+		break
 	}
 
-	// 2. 收集所有具有最小 LastUsedAt 的账号索引
-	var candidateIdxs []int
-	for i, acc := range accounts {
-		if hasNil {
-			if acc.account.LastUsedAt == nil {
-				candidateIdxs = append(candidateIdxs, i)
-			}
-		} else {
-			if acc.account.LastUsedAt != nil && acc.account.LastUsedAt.Equal(*minTime) {
-				candidateIdxs = append(candidateIdxs, i)
-			}
-		}
-	}
-
-	// 3. 如果只有一个候选，直接返回
 	if len(candidateIdxs) == 1 {
 		return &accounts[candidateIdxs[0]]
 	}
 
-	// 4. 如果有多个候选且 preferOAuth，优先选择 OAuth 类型
-	if preferOAuth {
+	if ordering.preferOAuth {
 		var oauthIdxs []int
 		for _, idx := range candidateIdxs {
 			if accounts[idx].account.Type == AccountTypeOAuth {
@@ -2845,39 +2883,105 @@ func selectByLRU(accounts []accountWithLoad, preferOAuth bool) *accountWithLoad 
 	return &accounts[selectedIdx]
 }
 
-func sortAccountsByPriorityAndLastUsed(accounts []*Account, preferOAuth bool) {
+func sortAccountsByPriorityAndLastUsed(accounts []*Account, ordering accountOrderingOptions) {
+	sort.SliceStable(accounts, func(i, j int) bool {
+		return isAccountBefore(accounts[i], accounts[j], ordering)
+	})
+	shuffleWithinPriorityAndLastUsed(accounts, ordering)
+}
+
+func sortAccountWithLoadByPriorityLoadAndLastUsed(accounts []accountWithLoad, ordering accountOrderingOptions) {
 	sort.SliceStable(accounts, func(i, j int) bool {
 		a, b := accounts[i], accounts[j]
-		if a.Priority != b.Priority {
-			return a.Priority < b.Priority
+		if a.account.Priority != b.account.Priority {
+			return a.account.Priority < b.account.Priority
 		}
-		switch {
-		case a.LastUsedAt == nil && b.LastUsedAt != nil:
-			return true
-		case a.LastUsedAt != nil && b.LastUsedAt == nil:
-			return false
-		case a.LastUsedAt == nil && b.LastUsedAt == nil:
-			if preferOAuth && a.Type != b.Type {
-				return a.Type == AccountTypeOAuth
-			}
-			return false
-		default:
+		if a.loadInfo.LoadRate != b.loadInfo.LoadRate {
+			return a.loadInfo.LoadRate < b.loadInfo.LoadRate
+		}
+		return isAccountBefore(a.account, b.account, ordering)
+	})
+}
+
+func isAccountBefore(a, b *Account, ordering accountOrderingOptions) bool {
+	if a.Priority != b.Priority {
+		return a.Priority < b.Priority
+	}
+	if ordering.preferEarlierOpenAIFreeReset {
+		if cmp := compareOpenAIFreeResetPriority(a, b); cmp != 0 {
+			return cmp < 0
+		}
+	}
+	switch {
+	case a.LastUsedAt == nil && b.LastUsedAt != nil:
+		return true
+	case a.LastUsedAt != nil && b.LastUsedAt == nil:
+		return false
+	case a.LastUsedAt == nil && b.LastUsedAt == nil:
+		if ordering.preferOAuth && a.Type != b.Type {
+			return a.Type == AccountTypeOAuth
+		}
+		return false
+	default:
+		if !a.LastUsedAt.Equal(*b.LastUsedAt) {
 			return a.LastUsedAt.Before(*b.LastUsedAt)
 		}
-	})
-	shuffleWithinPriorityAndLastUsed(accounts, preferOAuth)
+		if ordering.preferOAuth && a.Type != b.Type {
+			return a.Type == AccountTypeOAuth
+		}
+		return false
+	}
+}
+
+func compareOpenAIFreeResetPriority(a, b *Account) int {
+	aReset, aEligible := openAIFreeResetAtForOrdering(a)
+	bReset, bEligible := openAIFreeResetAtForOrdering(b)
+	switch {
+	case aEligible && bEligible:
+		if aReset.Before(*bReset) {
+			return -1
+		}
+		if bReset.Before(*aReset) {
+			return 1
+		}
+		return 0
+	case aEligible:
+		return -1
+	case bEligible:
+		return 1
+	default:
+		return 0
+	}
+}
+
+func openAIFreeResetAtForOrdering(account *Account) (*time.Time, bool) {
+	if account == nil || !account.IsOpenAI() {
+		return nil, false
+	}
+	if !strings.EqualFold(strings.TrimSpace(account.GetCredential("plan_type")), "free") {
+		return nil, false
+	}
+	raw := strings.TrimSpace(account.GetExtraString("codex_7d_reset_at"))
+	if raw == "" {
+		return nil, false
+	}
+	parsed, err := time.Parse(time.RFC3339, raw)
+	if err != nil {
+		return nil, false
+	}
+	return &parsed, true
 }
 
 // shuffleWithinSortGroups 对排序后的 accountWithLoad 切片，按 (Priority, LoadRate, LastUsedAt) 分组后组内随机打乱。
 // 防止并发请求读取同一快照时，确定性排序导致所有请求命中相同账号。
-func shuffleWithinSortGroups(accounts []accountWithLoad) {
+func shuffleWithinSortGroups(accounts []accountWithLoad, ordering accountOrderingOptions) {
 	if len(accounts) <= 1 {
 		return
 	}
 	i := 0
 	for i < len(accounts) {
 		j := i + 1
-		for j < len(accounts) && sameAccountWithLoadGroup(accounts[i], accounts[j]) {
+		for j < len(accounts) && sameAccountWithLoadGroup(accounts[i], accounts[j], ordering) {
 			j++
 		}
 		if j-i > 1 {
@@ -2890,11 +2994,17 @@ func shuffleWithinSortGroups(accounts []accountWithLoad) {
 }
 
 // sameAccountWithLoadGroup 判断两个 accountWithLoad 是否属于同一排序组
-func sameAccountWithLoadGroup(a, b accountWithLoad) bool {
+func sameAccountWithLoadGroup(a, b accountWithLoad, ordering accountOrderingOptions) bool {
 	if a.account.Priority != b.account.Priority {
 		return false
 	}
 	if a.loadInfo.LoadRate != b.loadInfo.LoadRate {
+		return false
+	}
+	if ordering.preferEarlierOpenAIFreeReset && compareOpenAIFreeResetPriority(a.account, b.account) != 0 {
+		return false
+	}
+	if ordering.preferOAuth && a.account.Type != b.account.Type {
 		return false
 	}
 	return sameLastUsedAt(a.account.LastUsedAt, b.account.LastUsedAt)
@@ -2906,18 +3016,18 @@ func sameAccountWithLoadGroup(a, b accountWithLoad) bool {
 // 因此这里采用"组内分区 + 分区内 shuffle"的方式：
 // - 先把同组账号按 (OAuth / 非 OAuth) 拆成两段，保持 OAuth 段在前；
 // - 再分别在各段内随机打散，避免热点。
-func shuffleWithinPriorityAndLastUsed(accounts []*Account, preferOAuth bool) {
+func shuffleWithinPriorityAndLastUsed(accounts []*Account, ordering accountOrderingOptions) {
 	if len(accounts) <= 1 {
 		return
 	}
 	i := 0
 	for i < len(accounts) {
 		j := i + 1
-		for j < len(accounts) && sameAccountGroup(accounts[i], accounts[j]) {
+		for j < len(accounts) && sameAccountGroup(accounts[i], accounts[j], ordering) {
 			j++
 		}
 		if j-i > 1 {
-			if preferOAuth {
+			if ordering.preferOAuth {
 				oauth := make([]*Account, 0, j-i)
 				others := make([]*Account, 0, j-i)
 				for _, acc := range accounts[i:j] {
@@ -2946,8 +3056,11 @@ func shuffleWithinPriorityAndLastUsed(accounts []*Account, preferOAuth bool) {
 }
 
 // sameAccountGroup 判断两个 Account 是否属于同一排序组（Priority + LastUsedAt）
-func sameAccountGroup(a, b *Account) bool {
+func sameAccountGroup(a, b *Account, ordering accountOrderingOptions) bool {
 	if a.Priority != b.Priority {
+		return false
+	}
+	if ordering.preferEarlierOpenAIFreeReset && compareOpenAIFreeResetPriority(a, b) != 0 {
 		return false
 	}
 	return sameLastUsedAt(a.LastUsedAt, b.LastUsedAt)
@@ -2967,14 +3080,15 @@ func sameLastUsedAt(a, b *time.Time) bool {
 
 // sortCandidatesForFallback 根据配置选择排序策略
 // mode: "last_used"(按最后使用时间) 或 "random"(随机)
-func (s *GatewayService) sortCandidatesForFallback(accounts []*Account, preferOAuth bool, mode string) {
+func (s *GatewayService) sortCandidatesForFallback(ctx context.Context, groupID *int64, accounts []*Account, preferOAuth bool, mode string) {
+	ordering := s.resolveAccountOrderingOptions(ctx, groupID, accounts, preferOAuth)
 	if mode == "random" {
-		// 先按优先级排序，然后在同优先级内随机打乱
-		sortAccountsByPriorityOnly(accounts, preferOAuth)
-		shuffleWithinPriority(accounts)
+		// random 模式下仍需保留 priority 与更快重置偏好，仅在同层候选内随机。
+		sortAccountsByPriorityAndReset(accounts, ordering)
+		shuffleWithinPriority(accounts, ordering)
 	} else {
 		// 默认按最后使用时间排序
-		sortAccountsByPriorityAndLastUsed(accounts, preferOAuth)
+		sortAccountsByPriorityAndLastUsed(accounts, ordering)
 	}
 }
 
@@ -2992,17 +3106,34 @@ func sortAccountsByPriorityOnly(accounts []*Account, preferOAuth bool) {
 	})
 }
 
+func sortAccountsByPriorityAndReset(accounts []*Account, ordering accountOrderingOptions) {
+	sort.SliceStable(accounts, func(i, j int) bool {
+		a, b := accounts[i], accounts[j]
+		if a.Priority != b.Priority {
+			return a.Priority < b.Priority
+		}
+		if ordering.preferEarlierOpenAIFreeReset {
+			if cmp := compareOpenAIFreeResetPriority(a, b); cmp != 0 {
+				return cmp < 0
+			}
+		}
+		if ordering.preferOAuth && a.Type != b.Type {
+			return a.Type == AccountTypeOAuth
+		}
+		return false
+	})
+}
+
 // shuffleWithinPriority 在同优先级内随机打乱顺序
-func shuffleWithinPriority(accounts []*Account) {
+func shuffleWithinPriority(accounts []*Account, ordering accountOrderingOptions) {
 	if len(accounts) <= 1 {
 		return
 	}
 	r := mathrand.New(mathrand.NewSource(time.Now().UnixNano()))
 	start := 0
 	for start < len(accounts) {
-		priority := accounts[start].Priority
 		end := start + 1
-		for end < len(accounts) && accounts[end].Priority == priority {
+		for end < len(accounts) && samePriorityShuffleGroup(accounts[start], accounts[end], ordering) {
 			end++
 		}
 		// 对 [start, end) 范围内的账户随机打乱
@@ -3013,6 +3144,19 @@ func shuffleWithinPriority(accounts []*Account) {
 		}
 		start = end
 	}
+}
+
+func samePriorityShuffleGroup(a, b *Account, ordering accountOrderingOptions) bool {
+	if a.Priority != b.Priority {
+		return false
+	}
+	if ordering.preferEarlierOpenAIFreeReset && compareOpenAIFreeResetPriority(a, b) != 0 {
+		return false
+	}
+	if ordering.preferOAuth && a.Type != b.Type {
+		return false
+	}
+	return true
 }
 
 // selectAccountForModelWithPlatform 选择单平台账户（完全隔离）

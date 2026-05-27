@@ -34,6 +34,8 @@ Demo credentials (shared demo environment; **not** created automatically for sel
 
 Sub2API is an AI API gateway platform designed to distribute and manage API quotas from AI product subscriptions. Users can access upstream AI services through platform-generated API Keys, while the platform handles authentication, billing, load balancing, and request forwarding.
 
+> Documentation sync rule: when code, configuration, scheduling behavior, or capability boundaries change, update this README and the affected localized docs in the same change.
+
 ## Features
 
 - **Multi-Account Management** - Support multiple upstream account types (OAuth, API Key)
@@ -44,7 +46,7 @@ Sub2API is an AI API gateway platform designed to distribute and manage API quot
 - **Rate Limiting** - Configurable request and token rate limits
 - **Built-in Payment System** - Supports EasyPay, Alipay, WeChat Pay, and Stripe for user self-service top-up, no separate payment service needed ([Configuration Guide](docs/PAYMENT.md))
 - **Admin Dashboard** - Web interface for monitoring and management
-- **OpenAI Free Pooling Board** - Admin-only preview/apply workflow for assigning OpenAI free accounts from a default intake group into five proxy-bound free pools, with reset-date-based pool clustering and a future reset forecast card based on `extra.codex_7d_reset_at`
+- **OpenAI Free Pooling And Reset-Aware Scheduling** - Admin-side OpenAI free pooling tools plus dashboard reset forecasting and runtime scheduling that can prefer earlier-resetting OpenAI free accounts inside the `账号池` group based on `extra.codex_7d_reset_at`
 - **External System Integration** - Embed external systems (e.g. ticketing) via iframe to extend the admin dashboard
 
 ### Admin OpenAI Free Pooling
@@ -58,11 +60,20 @@ The admin dashboard, account table, and dedicated `OpenAI Free 分池` admin pag
 - Forecast: the dashboard card aggregates upcoming resets from `extra.codex_7d_reset_at`, renders them as a line chart with expandable day details, and keeps accounts without that field in `Unknown`
 - Status feedback: when an admin account test returns an OAuth-style `401` / `token_invalidated` failure, the frontend immediately re-fetches that account and switches the badge to the persisted `error` state if the backend has already marked it; manual `Refresh Token` now also shows explicit success/failure toast feedback and re-syncs the row after a failure so persisted `error` status becomes visible without waiting for the next list poll
 
+### OpenAI Free Reset-Aware Scheduling
+
+For the runtime request path, Sub2API can now prefer the OpenAI free account that will reset sooner, but only inside the group whose name is exactly `账号池`.
+
+- Activation scope: only `platform=openai` accounts with `credentials.plan_type=free` and a valid RFC3339 `extra.codex_7d_reset_at`
+- Pre-filtering: accounts that are already unschedulable, including accounts still inside a `rate_limit_reset_at` cooldown window, are filtered out before ordering
+- Ordering rule: after filtering, selection keeps the existing scheduler layers and inserts reset awareness as an additional tie-breaker. In load-aware paths this becomes `priority -> load rate -> earlier OpenAI free reset -> last used / same-layer shuffle`; in fallback random mode it keeps `priority -> earlier OpenAI free reset` and only randomizes within the same layer
+- Boundaries: this rule does not reshuffle other groups, does not override `priority`, and does not apply to non-free or non-OpenAI accounts
+
 Current boundaries:
 
-- This is an admin-side workflow only; it does not change user-facing group selection behavior
 - First version is manual preview/apply only; there is no background scheduled execution
 - Background token refresh is not a full account health inspection; accounts that are not used, not manually tested, and not manually refreshed may still remain visually `active` until some real refresh/test path touches them
+- The runtime reset-aware scheduling described above is intentionally narrow: it only changes how already-eligible accounts are ordered inside the `账号池` group, and it depends on correct `plan_type` plus `codex_7d_reset_at` metadata
 - Source-code tests can validate planner logic, API contracts, and UI rendering, but they do not prove production mappings, live account metadata completeness, or zero-impact behavior on an already running deployment
 
 ## ❤️ Sponsors
