@@ -262,6 +262,37 @@ func TestOpenAIFreePoolForecast_ExcludesPlusAndCountsUnknownWithinLookahead(t *t
 	require.Equal(t, 1, forecast.UnknownCount)
 }
 
+func TestOpenAIFreePoolForecast_AllowsDefaultOnlyWithoutPools(t *testing.T) {
+	cfg := mustMarshalOpenAIFreePoolConfig(t, OpenAIFreePoolConfig{
+		Enabled:        false,
+		DefaultGroupID: 100,
+		PlusGroupID:    200,
+		LookaheadDays:  14,
+		Pools:          []OpenAIFreePool{},
+	})
+	svc := NewOpenAIFreePoolService(
+		&openAIFreePoolSettingRepoStub{values: map[string]string{SettingKeyOpenAIFreePoolConfig: cfg}},
+		&openAIFreePoolAdminServiceStub{
+			groups:  buildOpenAIFreePoolGroups(),
+			proxies: buildOpenAIFreePoolProxies(),
+			accounts: []Account{
+				newOpenAIFreePoolAccount(1, "default-free", 100, 0, nil, resetAtWithOffset(1)),
+				newOpenAIFreePoolAccount(2, "default-free-unknown", 100, 0, nil, ""),
+				newOpenAIFreePoolAccount(3, "plus-free", 200, 501, nil, resetAtWithOffset(1)),
+				newOpenAIFreePoolAccount(4, "other-group-free", 101, 501, nil, resetAtWithOffset(1)),
+			},
+		},
+	)
+
+	forecast, err := svc.Forecast(context.Background())
+	require.NoError(t, err)
+	require.Len(t, forecast.Days, 1)
+	require.Equal(t, 1, forecast.Days[0].Count)
+	require.Equal(t, int64(1), forecast.Days[0].Accounts[0].AccountID)
+	require.True(t, forecast.Days[0].Accounts[0].InDefaultGroup)
+	require.Equal(t, 1, forecast.UnknownCount)
+}
+
 func TestOpenAIFreePoolApply_MergesExistingExtraFields(t *testing.T) {
 	cfg := mustMarshalOpenAIFreePoolConfig(t, defaultOpenAIFreePoolConfig())
 	adminStub := &openAIFreePoolAdminServiceStub{

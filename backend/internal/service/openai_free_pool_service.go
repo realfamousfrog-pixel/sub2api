@@ -297,9 +297,6 @@ func (s *OpenAIFreePoolService) Forecast(ctx context.Context) (*OpenAIFreeResetF
 	if err != nil {
 		return nil, err
 	}
-	if err := validateOpenAIFreePoolConfig(cfg); err != nil {
-		return nil, err
-	}
 	groups, err := s.adminService.GetAllGroups(ctx)
 	if err != nil {
 		return nil, err
@@ -308,10 +305,10 @@ func (s *OpenAIFreePoolService) Forecast(ctx context.Context) (*OpenAIFreeResetF
 	if err != nil {
 		return nil, err
 	}
-	if err := validateOpenAIFreePoolRuntimeConfig(cfg, groups, proxies); err != nil {
+	if err := validateOpenAIFreeResetForecastRuntimeConfig(cfg, groups); err != nil {
 		return nil, err
 	}
-	accounts, err := s.collectManagedAccounts(ctx, cfg)
+	accounts, err := s.collectForecastAccounts(ctx, cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -508,6 +505,23 @@ func (s *OpenAIFreePoolService) collectManagedAccounts(ctx context.Context, cfg 
 	return result, nil
 }
 
+func (s *OpenAIFreePoolService) collectForecastAccounts(ctx context.Context, cfg *OpenAIFreePoolConfig) ([]*Account, error) {
+	accounts, _, err := s.adminService.ListAccounts(ctx, 1, 10000, PlatformOpenAI, "", "", "", 0, "", "name", "asc")
+	if err != nil {
+		return nil, err
+	}
+	result := make([]*Account, 0, len(accounts))
+	for i := range accounts {
+		account := accounts[i]
+		if !isForecastOpenAIFreeAccount(&account, cfg) {
+			continue
+		}
+		accCopy := account
+		result = append(result, &accCopy)
+	}
+	return result, nil
+}
+
 func isManagedOpenAIFreeAccount(account *Account, cfg *OpenAIFreePoolConfig, freeGroupIDs map[int64]struct{}) bool {
 	if account == nil || account.Platform != PlatformOpenAI {
 		return false
@@ -537,6 +551,29 @@ func isManagedOpenAIFreeAccount(account *Account, cfg *OpenAIFreePoolConfig, fre
 		}
 	}
 	return hasDefault || hasManagedPool
+}
+
+func isForecastOpenAIFreeAccount(account *Account, cfg *OpenAIFreePoolConfig) bool {
+	if account == nil || account.Platform != PlatformOpenAI {
+		return false
+	}
+	if !strings.EqualFold(strings.TrimSpace(account.GetCredential("plan_type")), "free") {
+		return false
+	}
+	groupIDs := account.GroupIDs
+	if len(groupIDs) == 0 && len(account.Groups) > 0 {
+		for _, group := range account.Groups {
+			if group != nil {
+				groupIDs = append(groupIDs, group.ID)
+			}
+		}
+	}
+	for _, groupID := range groupIDs {
+		if groupID == cfg.DefaultGroupID {
+			return true
+		}
+	}
+	return false
 }
 
 func normalizeOpenAIFreePoolConfig(cfg *OpenAIFreePoolConfig) {
@@ -615,6 +652,26 @@ func validateOpenAIFreePoolRuntimeConfig(cfg *OpenAIFreePoolConfig, groups []Gro
 		if _, ok := proxyByID[pool.ProxyID]; !ok {
 			return fmt.Errorf("pool proxy %d does not exist", pool.ProxyID)
 		}
+	}
+	return nil
+}
+
+func validateOpenAIFreeResetForecastRuntimeConfig(cfg *OpenAIFreePoolConfig, groups []Group) error {
+	if cfg == nil {
+		return fmt.Errorf("openai free pool config is required")
+	}
+	if cfg.DefaultGroupID <= 0 {
+		return fmt.Errorf("default_group_id is required")
+	}
+	groupByID := make(map[int64]struct{}, len(groups))
+	for _, group := range groups {
+		groupByID[group.ID] = struct{}{}
+	}
+	if _, ok := groupByID[cfg.DefaultGroupID]; !ok {
+		return fmt.Errorf("default group %d does not exist", cfg.DefaultGroupID)
+	}
+	if cfg.LookaheadDays <= 0 {
+		cfg.LookaheadDays = openAIFreePoolDefaultLookaheadDays
 	}
 	return nil
 }

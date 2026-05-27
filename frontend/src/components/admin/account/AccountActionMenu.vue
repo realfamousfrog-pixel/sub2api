@@ -36,23 +36,6 @@
               <Icon name="shield" size="sm" />
               {{ t('admin.accounts.setPrivacy') }}
             </button>
-            <div v-if="isManagedOpenAIFreeAccount" class="my-1 border-t border-gray-100 dark:border-dark-700"></div>
-            <button
-              v-if="isManagedOpenAIFreeAccount"
-              @click="$emit('openai-free-pool-lock', account); $emit('close')"
-              class="flex w-full items-center gap-2 px-4 py-2 text-sm text-sky-600 hover:bg-gray-100 dark:hover:bg-dark-700"
-            >
-              <Icon name="lock" size="sm" />
-              {{ t('admin.accounts.lockOpenAIFreePool') }}
-            </button>
-            <button
-              v-if="isManagedOpenAIFreeAccount"
-              @click="$emit('openai-free-pool-unlock', account); $emit('close')"
-              class="flex w-full items-center gap-2 px-4 py-2 text-sm text-amber-600 hover:bg-gray-100 dark:hover:bg-dark-700"
-            >
-              <Icon name="lock" size="sm" />
-              {{ t('admin.accounts.unlockOpenAIFreePool') }}
-            </button>
             <div v-if="hasRecoverableState" class="my-1 border-t border-gray-100 dark:border-dark-700"></div>
             <button v-if="hasRecoverableState" @click="$emit('recover-state', account); $emit('close')" class="flex w-full items-center gap-2 px-4 py-2 text-sm text-emerald-600 hover:bg-gray-100 dark:hover:bg-dark-700">
               <Icon name="sync" size="sm" />
@@ -76,7 +59,7 @@ import { Icon } from '@/components/icons'
 import type { Account } from '@/types'
 
 const props = defineProps<{ show: boolean; account: Account | null; position: { top: number; left: number } | null }>()
-const emit = defineEmits(['close', 'test', 'stats', 'schedule', 'reauth', 'refresh-token', 'recover-state', 'reset-quota', 'set-privacy', 'openai-free-pool-lock', 'openai-free-pool-unlock'])
+const emit = defineEmits(['close', 'test', 'stats', 'schedule', 'reauth', 'refresh-token', 'recover-state', 'reset-quota', 'set-privacy'])
 const { t } = useI18n()
 const isRateLimited = computed(() => {
   if (props.account?.rate_limit_reset_at && new Date(props.account.rate_limit_reset_at) > new Date()) {
@@ -106,13 +89,6 @@ const hasQuotaLimit = computed(() => {
     (props.account?.quota_weekly_limit ?? 0) > 0
   )
 })
-const isManagedOpenAIFreeAccount = computed(() => {
-  const account = props.account
-  if (!account || account.platform !== 'openai') return false
-  const planType = typeof account.credentials?.plan_type === 'string' ? account.credentials.plan_type : ''
-  return planType.toLowerCase() === 'free'
-})
-
 const handleKeydown = (event: KeyboardEvent) => {
   if (event.key === 'Escape') emit('close')
 }
