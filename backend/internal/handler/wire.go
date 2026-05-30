@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/handler/admin"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
@@ -94,6 +95,7 @@ func ProvideAdminAccountHandler(
 	sessionLimitCache service.SessionLimitCache,
 	rpmCache service.RPMCache,
 	tokenCacheInvalidator service.TokenCacheInvalidator,
+	cfg *config.Config,
 ) *admin.AccountHandler {
 	h := admin.NewAccountHandler(
 		adminService,
@@ -109,6 +111,7 @@ func ProvideAdminAccountHandler(
 		sessionLimitCache,
 		rpmCache,
 		tokenCacheInvalidator,
+		cfg,
 	)
 	h.SetOpenAIFreePoolService(openAIFreePoolService)
 	return h
