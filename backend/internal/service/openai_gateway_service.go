@@ -2376,6 +2376,15 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			promptCacheKey = strings.TrimSpace(v)
 		}
 	}
+	strippedClientImageGenerationTool := false
+	if isCodexCLI {
+		if override := account.CodexImageGenerationBridgeOverride(); override != nil && !*override {
+			if stripOpenAIResponsesImageGenerationTools(reqBody) {
+				strippedClientImageGenerationTool = true
+				logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Stripped client /responses image_generation tool due to account override")
+			}
+		}
+	}
 	apiKey := getAPIKeyFromContext(c)
 	imageGenerationAllowed := GroupAllowsImageGeneration(nil)
 	if apiKey != nil {
@@ -2442,6 +2451,10 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	}
 	disablePatch := func() {
 		patchDisabled = true
+	}
+	if strippedClientImageGenerationTool {
+		bodyModified = true
+		disablePatch()
 	}
 
 	// 非透传模式下，instructions 为空时注入默认指令。
