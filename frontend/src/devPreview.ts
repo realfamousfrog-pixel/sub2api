@@ -109,6 +109,9 @@ const proxies: Proxy[] = [
     quality_grade: 'A',
     quality_summary: 'Stable residential exit IP',
     quality_checked: Date.now(),
+    expires_at: null,
+    fallback_mode: 'none',
+    expiry_warn_days: 7,
     created_at: now,
     updated_at: now
   },
@@ -131,6 +134,9 @@ const proxies: Proxy[] = [
     quality_grade: 'A',
     quality_summary: 'Healthy exit IP',
     quality_checked: Date.now(),
+    expires_at: null,
+    fallback_mode: 'none',
+    expiry_warn_days: 7,
     created_at: now,
     updated_at: now
   },
@@ -153,6 +159,9 @@ const proxies: Proxy[] = [
     quality_grade: 'A',
     quality_summary: 'Healthy exit IP',
     quality_checked: Date.now(),
+    expires_at: null,
+    fallback_mode: 'none',
+    expiry_warn_days: 7,
     created_at: now,
     updated_at: now
   },
@@ -175,6 +184,9 @@ const proxies: Proxy[] = [
     quality_grade: 'A',
     quality_summary: 'Healthy exit IP',
     quality_checked: Date.now(),
+    expires_at: null,
+    fallback_mode: 'none',
+    expiry_warn_days: 7,
     created_at: now,
     updated_at: now
   },
@@ -197,6 +209,9 @@ const proxies: Proxy[] = [
     quality_grade: 'B',
     quality_summary: 'Available with occasional challenges',
     quality_checked: Date.now(),
+    expires_at: null,
+    fallback_mode: 'none',
+    expiry_warn_days: 7,
     created_at: now,
     updated_at: now
   }

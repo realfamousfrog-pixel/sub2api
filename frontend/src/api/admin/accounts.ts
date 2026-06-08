@@ -800,7 +800,7 @@ export const accountsAPI = {
   applyOpenAIFreePool,
   getOpenAIFreePoolAccounts,
   lockOpenAIFreePoolAccount,
-  revertProxyFallback
+  revertProxyFallback,
   unlockOpenAIFreePoolAccount,
 }
 
