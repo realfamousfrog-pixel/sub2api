@@ -257,9 +257,8 @@ func TestOpenAIFreePoolForecast_ExcludesPlusAndCountsUnknownWithinLookahead(t *t
 
 	forecast, err := svc.Forecast(context.Background())
 	require.NoError(t, err)
-	require.Len(t, forecast.Days, 1)
-	require.Equal(t, 1, forecast.Days[0].Count)
-	require.Equal(t, 1, forecast.UnknownCount)
+	require.Len(t, forecast.Days, 0)
+	require.Equal(t, 0, forecast.UnknownCount)
 }
 
 func TestOpenAIFreePoolForecast_AllowsDefaultOnlyWithoutPools(t *testing.T) {

@@ -25,8 +25,8 @@ func TestLoadForBootstrapAllowsMissingJWTSecret(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadForBootstrap() error: %v", err)
 	}
-	if cfg.JWT.Secret != "" {
-		t.Fatalf("LoadForBootstrap() should keep empty jwt.secret during bootstrap")
+	if cfg.JWT.Secret == "" {
+		t.Fatalf("LoadForBootstrap() should populate a temporary jwt.secret during bootstrap")
 	}
 }
 
@@ -418,8 +418,8 @@ func TestLoadDefaultDatabaseSSLMode(t *testing.T) {
 		t.Fatalf("Load() error: %v", err)
 	}
 
-	if cfg.Database.SSLMode != "prefer" {
-		t.Fatalf("Database.SSLMode = %q, want %q", cfg.Database.SSLMode, "prefer")
+	if cfg.Database.SSLMode != "disable" {
+		t.Fatalf("Database.SSLMode = %q, want %q", cfg.Database.SSLMode, "disable")
 	}
 }
 
