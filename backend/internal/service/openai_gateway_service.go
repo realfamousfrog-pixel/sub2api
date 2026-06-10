@@ -1815,7 +1815,7 @@ func (s *OpenAIGatewayService) isBetterAccount(candidate, current *Account, orde
 
 func (s *OpenAIGatewayService) resolveAccountOrderingOptions(ctx context.Context, groupID *int64, accounts []*Account, preferOAuth bool) accountOrderingOptions {
 	return accountOrderingOptions{
-		preferOAuth:                 preferOAuth,
+		preferOAuth:                  preferOAuth,
 		preferEarlierOpenAIFreeReset: s.shouldPreferEarlierOpenAIFreeReset(ctx, groupID, accounts),
 	}
 }
