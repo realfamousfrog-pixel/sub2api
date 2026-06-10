@@ -97,7 +97,7 @@ type accountWithLoad struct {
 }
 
 type accountOrderingOptions struct {
-	preferOAuth                 bool
+	preferOAuth                  bool
 	preferEarlierOpenAIFreeReset bool
 }
 
@@ -2244,7 +2244,7 @@ func (s *GatewayService) resolveGroupByID(ctx context.Context, groupID int64) (*
 
 func (s *GatewayService) resolveAccountOrderingOptions(ctx context.Context, groupID *int64, accounts []*Account, preferOAuth bool) accountOrderingOptions {
 	return accountOrderingOptions{
-		preferOAuth:                 preferOAuth,
+		preferOAuth:                  preferOAuth,
 		preferEarlierOpenAIFreeReset: s.shouldPreferEarlierOpenAIFreeReset(ctx, groupID, accounts),
 	}
 }
@@ -3201,20 +3201,6 @@ func (s *GatewayService) sortCandidatesForFallback(ctx context.Context, groupID 
 		// 默认按最后使用时间排序
 		sortAccountsByPriorityAndLastUsed(accounts, ordering)
 	}
-}
-
-// sortAccountsByPriorityOnly 仅按优先级排序
-func sortAccountsByPriorityOnly(accounts []*Account, preferOAuth bool) {
-	sort.SliceStable(accounts, func(i, j int) bool {
-		a, b := accounts[i], accounts[j]
-		if a.Priority != b.Priority {
-			return a.Priority < b.Priority
-		}
-		if preferOAuth && a.Type != b.Type {
-			return a.Type == AccountTypeOAuth
-		}
-		return false
-	})
 }
 
 func sortAccountsByPriorityAndReset(accounts []*Account, ordering accountOrderingOptions) {

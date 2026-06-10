@@ -20,8 +20,8 @@ FROM ${NODE_IMAGE} AS frontend-builder
 
 WORKDIR /app/frontend
 
-# Install pnpm pinned to the lockfile-compatible major version.
-RUN corepack enable && corepack prepare pnpm@11.1.1 --activate
+# Install pnpm pinned to the lockfile-compatible major version used in CI.
+RUN corepack enable && corepack prepare pnpm@9.15.9 --activate
 
 # Install dependency metadata first (better caching)
 # pnpm's frozen lockfile validation also depends on workspace and npm config.

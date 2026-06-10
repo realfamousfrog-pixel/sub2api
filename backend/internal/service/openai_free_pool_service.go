@@ -75,13 +75,13 @@ type OpenAIFreePoolMove struct {
 }
 
 type OpenAIFreePoolPreview struct {
-	Config             OpenAIFreePoolConfig  `json:"config"`
-	Summary            OpenAIFreePoolSummary `json:"summary"`
-	Pools              []OpenAIFreePoolState `json:"pools"`
-	Moves              []OpenAIFreePoolMove  `json:"moves"`
-	UnknownResetIDs    []int64               `json:"unknown_reset_ids"`
-	GeneratedAt        string                `json:"generated_at"`
-	ForceRebalance     bool                  `json:"force_rebalance"`
+	Config          OpenAIFreePoolConfig  `json:"config"`
+	Summary         OpenAIFreePoolSummary `json:"summary"`
+	Pools           []OpenAIFreePoolState `json:"pools"`
+	Moves           []OpenAIFreePoolMove  `json:"moves"`
+	UnknownResetIDs []int64               `json:"unknown_reset_ids"`
+	GeneratedAt     string                `json:"generated_at"`
+	ForceRebalance  bool                  `json:"force_rebalance"`
 }
 
 type OpenAIFreePoolApplyRequest struct {
@@ -89,11 +89,11 @@ type OpenAIFreePoolApplyRequest struct {
 }
 
 type OpenAIFreePoolApplyResult struct {
-	Applied    int                    `json:"applied"`
-	Skipped    int                    `json:"skipped"`
-	Failed     int                    `json:"failed"`
-	Preview    *OpenAIFreePoolPreview `json:"preview,omitempty"`
-	GeneratedAt string                `json:"generated_at"`
+	Applied     int                    `json:"applied"`
+	Skipped     int                    `json:"skipped"`
+	Failed      int                    `json:"failed"`
+	Preview     *OpenAIFreePoolPreview `json:"preview,omitempty"`
+	GeneratedAt string                 `json:"generated_at"`
 }
 
 type OpenAIFreePoolManagedAccount struct {
@@ -118,21 +118,21 @@ type OpenAIFreePoolLockRequest struct {
 }
 
 type OpenAIFreeResetForecastAccount struct {
-	AccountID      int64   `json:"account_id"`
-	AccountName    string  `json:"account_name"`
-	GroupID        *int64  `json:"group_id,omitempty"`
-	GroupName      string  `json:"group_name,omitempty"`
-	ProxyID        *int64  `json:"proxy_id,omitempty"`
-	ProxyName      string  `json:"proxy_name,omitempty"`
-	InDefaultGroup bool    `json:"in_default_group"`
+	AccountID      int64    `json:"account_id"`
+	AccountName    string   `json:"account_name"`
+	GroupID        *int64   `json:"group_id,omitempty"`
+	GroupName      string   `json:"group_name,omitempty"`
+	ProxyID        *int64   `json:"proxy_id,omitempty"`
+	ProxyName      string   `json:"proxy_name,omitempty"`
+	InDefaultGroup bool     `json:"in_default_group"`
 	UsagePercent   *float64 `json:"usage_percent,omitempty"`
-	ResetAt        *string `json:"reset_at,omitempty"`
+	ResetAt        *string  `json:"reset_at,omitempty"`
 }
 
 type OpenAIFreeResetForecastDay struct {
-	Date     string                            `json:"date"`
-	Count    int                               `json:"count"`
-	Accounts []OpenAIFreeResetForecastAccount  `json:"accounts"`
+	Date     string                           `json:"date"`
+	Count    int                              `json:"count"`
+	Accounts []OpenAIFreeResetForecastAccount `json:"accounts"`
 }
 
 type OpenAIFreeResetForecast struct {
@@ -155,7 +155,7 @@ type OpenAIFreePoolService struct {
 
 func NewOpenAIFreePoolService(settingRepo SettingRepository, adminService openAIFreePoolAdminService) *OpenAIFreePoolService {
 	return &OpenAIFreePoolService{
-		settingRepo: settingRepo,
+		settingRepo:  settingRepo,
 		adminService: adminService,
 	}
 }
@@ -677,21 +677,21 @@ func validateOpenAIFreeResetForecastRuntimeConfig(cfg *OpenAIFreePoolConfig, gro
 }
 
 type openAIFreePoolPlanCandidate struct {
-	account            *Account
-	currentGroupID     *int64
-	currentGroupName   string
-	currentProxyID     *int64
-	currentProxyName   string
-	resetAt            *string
-	resetDate          string
-	lockedGroupID      *int64
-	lockedProxyID      *int64
-	locked             bool
-	lockMode           string
-	needsMove          bool
-	reason             string
-	targetGroupID      *int64
-	targetProxyID      *int64
+	account          *Account
+	currentGroupID   *int64
+	currentGroupName string
+	currentProxyID   *int64
+	currentProxyName string
+	resetAt          *string
+	resetDate        string
+	lockedGroupID    *int64
+	lockedProxyID    *int64
+	locked           bool
+	lockMode         string
+	needsMove        bool
+	reason           string
+	targetGroupID    *int64
+	targetProxyID    *int64
 }
 
 type openAIFreePoolDateAnchor struct {
@@ -1017,7 +1017,7 @@ func detectProxy(account *Account, proxyByID map[int64]Proxy) (*int64, string) {
 	if proxy, ok := proxyByID[*account.ProxyID]; ok {
 		name = proxy.Name
 	}
-		return int64PtrPool(*account.ProxyID), name
+	return int64PtrPool(*account.ProxyID), name
 }
 
 func extractOpenAIFreeReset(account *Account) (*string, string) {

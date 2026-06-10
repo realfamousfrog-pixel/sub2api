@@ -17,10 +17,10 @@ import (
 
 // DashboardHandler handles admin dashboard statistics
 type DashboardHandler struct {
-	dashboardService   *service.DashboardService
-	aggregationService *service.DashboardAggregationService
+	dashboardService      *service.DashboardService
+	aggregationService    *service.DashboardAggregationService
 	openAIFreePoolService *service.OpenAIFreePoolService
-	startTime          time.Time // Server start time for uptime calculation
+	startTime             time.Time // Server start time for uptime calculation
 }
 
 // NewDashboardHandler creates a new admin dashboard handler
