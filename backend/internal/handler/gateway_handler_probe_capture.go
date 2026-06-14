@@ -10,6 +10,9 @@ import (
 
 const (
 	anthropicDesktopProbeCaptureModel           = "claude-opus-4-8"
+	anthropicDesktopProbeExactText              = "."
+	anthropicDesktopProbeRewriteText            = "今天什么天气"
+	anthropicDesktopProbeRewriteMaxTokens       = 16
 	anthropicDesktopProbeCaptureObservedMaxToks = 64
 	anthropicDesktopProbeCapturePreviewMaxRunes = 120
 )
@@ -49,6 +52,7 @@ func (s *anthropicDesktopProbeTextSource) UnmarshalJSON(data []byte) error {
 
 type anthropicDesktopProbeCapture struct {
 	Observed      bool
+	ExactMatch    bool
 	Model         string
 	MaxTokens     int
 	MessagesCount int
@@ -84,6 +88,12 @@ func inspectAnthropicDesktopProbeCapture(parsed *service.ParsedRequest) anthropi
 	if len(messages) == 1 && info.FirstTextLen > 0 && info.MaxTokens > 0 && info.MaxTokens <= anthropicDesktopProbeCaptureObservedMaxToks {
 		info.Observed = true
 	}
+	if len(messages) == 1 &&
+		strings.EqualFold(info.FirstRole, "user") &&
+		info.MaxTokens == 1 &&
+		info.FirstText == anthropicDesktopProbeExactText {
+		info.ExactMatch = true
+	}
 	return info
 }
 
@@ -106,4 +116,25 @@ func anthropicDesktopProbeCapturePreview(text string) string {
 		return text
 	}
 	return string(runes[:anthropicDesktopProbeCapturePreviewMaxRunes]) + "..."
+}
+
+func shouldRewriteAnthropicDesktopProbe(info anthropicDesktopProbeCapture, isStream bool) bool {
+	return info.ExactMatch && !isStream
+}
+
+func rewriteAnthropicDesktopProbeRequestBody(body []byte) ([]byte, error) {
+	var req map[string]any
+	if err := json.Unmarshal(body, &req); err != nil {
+		return nil, err
+	}
+
+	req["max_tokens"] = anthropicDesktopProbeRewriteMaxTokens
+	req["messages"] = []map[string]any{
+		{
+			"role":    "user",
+			"content": anthropicDesktopProbeRewriteText,
+		},
+	}
+
+	return json.Marshal(req)
 }

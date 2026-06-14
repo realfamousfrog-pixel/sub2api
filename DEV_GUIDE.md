@@ -272,22 +272,31 @@ git add ent/       # 生成的文件也要提交
 - 确认真实正文后，再只对那个精确内容做单独映射。
 
 **当前实现边界**：
-- 当前只做日志捕获，不改 `body`，不改账号选择，不改上游转发；
 - 当前日志观察范围收窄为：
   - `POST /v1/messages`；
   - `model=claude-opus-4-8`；
   - 单条消息；
   - `max_tokens` 较小。
+- 当前已确认桌面端探活正文为单字符 `.`，并已只对这一条精确请求做转发前改写；
+- 当前精确命中条件为：
+  - `POST /v1/messages`；
+  - `model=claude-opus-4-8`；
+  - `stream=false`；
+  - `max_tokens=1`；
+  - 单条 `user` 消息；
+  - 首条文本精确等于 `.`；
+- 命中后仅把请求体改写为上游更容易接受的标准消息，再继续沿原链路转发；不改普通业务请求，不改其他短请求。
 
 **日志关键字**：
 - `gateway.claude_desktop_probe_capture`
 - `gateway.claude_desktop_probe_capture_result`
+- `gateway.claude_desktop_probe_rewrite`
 
 **当前建议**：
 - 先从日志里确认 `first_text_preview`、`first_text_len`、`messages_count`、`max_tokens`；
 - 日志捕获发生在 `SetClaudeCodeClientContext` 之前，不再因为后续客户端识别结果而跳过；
-- 不要在未确认正文前修改转发 body；
-- 确认完真实探活正文后，再新增“只对该精确正文命中的映射规则”。
+- 只有在日志确认到新的稳定探活正文时，才新增或调整精确映射规则；
+- 不要把这条规则泛化成“任意短消息”命中。
 
 ---
 

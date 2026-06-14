@@ -55,3 +55,57 @@ func TestInspectAnthropicDesktopProbeCapture_ObservedWithStringContent(t *testin
 	require.Equal(t, "hi", info.FirstText)
 	require.Equal(t, 2, info.FirstTextLen)
 }
+
+func TestInspectAnthropicDesktopProbeCapture_ExactDesktopProbeMatch(t *testing.T) {
+	body := []byte(`{
+		"model":"claude-opus-4-8",
+		"max_tokens":1,
+		"messages":[{"role":"user","content":"."}]
+	}`)
+	parsed, err := service.ParseGatewayRequest(service.NewRequestBodyRef(body), domain.PlatformAnthropic)
+	require.NoError(t, err)
+
+	info := inspectAnthropicDesktopProbeCapture(parsed)
+	require.True(t, info.Observed)
+	require.True(t, info.ExactMatch)
+	require.True(t, shouldRewriteAnthropicDesktopProbe(info, false))
+}
+
+func TestInspectAnthropicDesktopProbeCapture_DoesNotRewriteOtherObservedMessages(t *testing.T) {
+	body := []byte(`{
+		"model":"claude-opus-4-8",
+		"max_tokens":1,
+		"messages":[{"role":"user","content":"hello"}]
+	}`)
+	parsed, err := service.ParseGatewayRequest(service.NewRequestBodyRef(body), domain.PlatformAnthropic)
+	require.NoError(t, err)
+
+	info := inspectAnthropicDesktopProbeCapture(parsed)
+	require.True(t, info.Observed)
+	require.False(t, info.ExactMatch)
+	require.False(t, shouldRewriteAnthropicDesktopProbe(info, false))
+}
+
+func TestRewriteAnthropicDesktopProbeRequestBody(t *testing.T) {
+	body := []byte(`{
+		"model":"claude-opus-4-8",
+		"max_tokens":1,
+		"stream":false,
+		"messages":[{"role":"user","content":"."}]
+	}`)
+
+	rewritten, err := rewriteAnthropicDesktopProbeRequestBody(body)
+	require.NoError(t, err)
+
+	parsed, err := service.ParseGatewayRequest(service.NewRequestBodyRef(rewritten), domain.PlatformAnthropic)
+	require.NoError(t, err)
+	require.Equal(t, "claude-opus-4-8", parsed.Model)
+	require.Equal(t, anthropicDesktopProbeRewriteMaxTokens, parsed.MaxTokens)
+	require.False(t, parsed.Stream)
+
+	var messages []anthropicDesktopProbeMessage
+	require.NoError(t, parsed.DecodeMessages(&messages))
+	require.Len(t, messages, 1)
+	require.Equal(t, "user", messages[0].Role)
+	require.Equal(t, anthropicDesktopProbeRewriteText, messages[0].Content.Text)
+}
