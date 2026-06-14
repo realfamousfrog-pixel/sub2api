@@ -277,7 +277,7 @@ git add ent/       # 生成的文件也要提交
   - `model=claude-opus-4-8`；
   - 单条消息；
   - `max_tokens` 较小。
-- 当前已确认桌面端探活正文为单字符 `.`，并已只对这一条精确请求做转发前改写；
+- 当前已确认桌面端探活正文为单字符 `.`，并已只对这一条精确请求做本地短路成功响应；
 - 当前精确命中条件为：
   - `POST /v1/messages`；
   - `model=claude-opus-4-8`；
@@ -285,12 +285,12 @@ git add ent/       # 生成的文件也要提交
   - `max_tokens=1`；
   - 单条 `user` 消息；
   - 首条文本精确等于 `.`；
-- 命中后仅把请求体改写为上游更容易接受的标准消息，再继续沿原链路转发；不改普通业务请求，不改其他短请求。
+- 命中后直接在本地返回合法 Anthropic `/v1/messages` 成功响应，不再打上游；不改普通业务请求，不改其他短请求。
 
 **日志关键字**：
 - `gateway.claude_desktop_probe_capture`
 - `gateway.claude_desktop_probe_capture_result`
-- `gateway.claude_desktop_probe_rewrite`
+- `gateway.claude_desktop_probe_short_circuit`
 
 **当前建议**：
 - 先从日志里确认 `first_text_preview`、`first_text_len`、`messages_count`、`max_tokens`；

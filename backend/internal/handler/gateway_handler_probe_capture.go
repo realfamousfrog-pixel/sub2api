@@ -11,8 +11,6 @@ import (
 const (
 	anthropicDesktopProbeCaptureModel           = "claude-opus-4-8"
 	anthropicDesktopProbeExactText              = "."
-	anthropicDesktopProbeRewriteText            = "今天什么天气"
-	anthropicDesktopProbeRewriteMaxTokens       = 16
 	anthropicDesktopProbeCaptureObservedMaxToks = 64
 	anthropicDesktopProbeCapturePreviewMaxRunes = 120
 )
@@ -118,23 +116,6 @@ func anthropicDesktopProbeCapturePreview(text string) string {
 	return string(runes[:anthropicDesktopProbeCapturePreviewMaxRunes]) + "..."
 }
 
-func shouldRewriteAnthropicDesktopProbe(info anthropicDesktopProbeCapture, isStream bool) bool {
+func shouldShortCircuitAnthropicDesktopProbe(info anthropicDesktopProbeCapture, isStream bool) bool {
 	return info.ExactMatch && !isStream
-}
-
-func rewriteAnthropicDesktopProbeRequestBody(body []byte) ([]byte, error) {
-	var req map[string]any
-	if err := json.Unmarshal(body, &req); err != nil {
-		return nil, err
-	}
-
-	req["max_tokens"] = anthropicDesktopProbeRewriteMaxTokens
-	req["messages"] = []map[string]any{
-		{
-			"role":    "user",
-			"content": anthropicDesktopProbeRewriteText,
-		},
-	}
-
-	return json.Marshal(req)
 }

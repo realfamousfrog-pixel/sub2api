@@ -193,33 +193,15 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			)
 		}()
 	}
-	if shouldRewriteAnthropicDesktopProbe(probeCapture, reqStream) {
-		rewrittenBody, err := rewriteAnthropicDesktopProbeRequestBody(body)
-		if err != nil {
-			reqLog.Warn("gateway.claude_desktop_probe_rewrite_failed",
-				zap.String("path", c.Request.URL.Path),
-				zap.String("model", probeCapture.Model),
-				zap.Error(err),
-			)
-		} else if err := parsedReq.ReplaceBody(rewrittenBody); err != nil {
-			reqLog.Warn("gateway.claude_desktop_probe_rewrite_refresh_failed",
-				zap.String("path", c.Request.URL.Path),
-				zap.String("model", probeCapture.Model),
-				zap.Error(err),
-			)
-		} else {
-			body = rewrittenBody
-			reqStream = parsedReq.Stream
-			reqLog = reqLog.With(zap.Bool("stream", reqStream))
-			reqLog.Info("gateway.claude_desktop_probe_rewrite",
-				zap.String("path", c.Request.URL.Path),
-				zap.String("model", probeCapture.Model),
-				zap.Int("original_max_tokens", probeCapture.MaxTokens),
-				zap.String("original_text_preview", anthropicDesktopProbeCapturePreview(probeCapture.FirstText)),
-				zap.Int("rewritten_max_tokens", parsedReq.MaxTokens),
-				zap.String("rewritten_text_preview", anthropicDesktopProbeCapturePreview(anthropicDesktopProbeRewriteText)),
-			)
-		}
+	if shouldShortCircuitAnthropicDesktopProbe(probeCapture, reqStream) {
+		reqLog.Info("gateway.claude_desktop_probe_short_circuit",
+			zap.String("path", c.Request.URL.Path),
+			zap.String("model", probeCapture.Model),
+			zap.Int("max_tokens", probeCapture.MaxTokens),
+			zap.String("first_text_preview", anthropicDesktopProbeCapturePreview(probeCapture.FirstText)),
+		)
+		sendMockInterceptResponse(c, reqModel, InterceptTypeMaxTokensOneHaiku)
+		return
 	}
 
 	// 检查是否为 Claude Code 客户端，设置到 context 中（复用已解析请求，避免二次反序列化）。
