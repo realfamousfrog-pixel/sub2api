@@ -33,9 +33,9 @@ type anthropicDesktopProbeCapture struct {
 	FirstTextLen  int
 }
 
-func inspectAnthropicDesktopProbeCapture(parsed *service.ParsedRequest, isClaudeCodeClient bool) anthropicDesktopProbeCapture {
+func inspectAnthropicDesktopProbeCapture(parsed *service.ParsedRequest) anthropicDesktopProbeCapture {
 	info := anthropicDesktopProbeCapture{}
-	if parsed == nil || isClaudeCodeClient {
+	if parsed == nil {
 		return info
 	}
 

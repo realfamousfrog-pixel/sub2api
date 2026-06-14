@@ -17,7 +17,7 @@ func TestInspectAnthropicDesktopProbeCapture_Observed(t *testing.T) {
 	parsed, err := service.ParseGatewayRequest(service.NewRequestBodyRef(body), domain.PlatformAnthropic)
 	require.NoError(t, err)
 
-	info := inspectAnthropicDesktopProbeCapture(parsed, false)
+	info := inspectAnthropicDesktopProbeCapture(parsed)
 	require.True(t, info.Observed)
 	require.Equal(t, "claude-opus-4-8", info.Model)
 	require.Equal(t, 8, info.MaxTokens)
@@ -27,7 +27,7 @@ func TestInspectAnthropicDesktopProbeCapture_Observed(t *testing.T) {
 	require.Equal(t, 5, info.FirstTextLen)
 }
 
-func TestInspectAnthropicDesktopProbeCapture_IgnoresClaudeCodeClient(t *testing.T) {
+func TestInspectAnthropicDesktopProbeCapture_StillObservesEvenIfLaterClassifiedAsClaudeCode(t *testing.T) {
 	body := []byte(`{
 		"model":"claude-opus-4-8",
 		"max_tokens":8,
@@ -36,6 +36,6 @@ func TestInspectAnthropicDesktopProbeCapture_IgnoresClaudeCodeClient(t *testing.
 	parsed, err := service.ParseGatewayRequest(service.NewRequestBodyRef(body), domain.PlatformAnthropic)
 	require.NoError(t, err)
 
-	info := inspectAnthropicDesktopProbeCapture(parsed, true)
-	require.False(t, info.Observed)
+	info := inspectAnthropicDesktopProbeCapture(parsed)
+	require.True(t, info.Observed)
 }

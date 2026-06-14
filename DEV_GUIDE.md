@@ -274,7 +274,6 @@ git add ent/       # 生成的文件也要提交
 **当前实现边界**：
 - 当前只做日志捕获，不改 `body`，不改账号选择，不改上游转发；
 - 当前日志观察范围收窄为：
-  - 非 Claude Code 客户端；
   - `POST /v1/messages`；
   - `model=claude-opus-4-8`；
   - 单条消息；
@@ -286,6 +285,7 @@ git add ent/       # 生成的文件也要提交
 
 **当前建议**：
 - 先从日志里确认 `first_text_preview`、`first_text_len`、`messages_count`、`max_tokens`；
+- 日志捕获发生在 `SetClaudeCodeClientContext` 之前，不再因为后续客户端识别结果而跳过；
 - 不要在未确认正文前修改转发 body；
 - 确认完真实探活正文后，再新增“只对该精确正文命中的映射规则”。
 
