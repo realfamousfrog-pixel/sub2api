@@ -39,3 +39,19 @@ func TestInspectAnthropicDesktopProbeCapture_StillObservesEvenIfLaterClassifiedA
 	info := inspectAnthropicDesktopProbeCapture(parsed)
 	require.True(t, info.Observed)
 }
+
+func TestInspectAnthropicDesktopProbeCapture_ObservedWithStringContent(t *testing.T) {
+	body := []byte(`{
+		"model":"claude-opus-4-8",
+		"max_tokens":8,
+		"messages":[{"role":"user","content":"hi"}]
+	}`)
+	parsed, err := service.ParseGatewayRequest(service.NewRequestBodyRef(body), domain.PlatformAnthropic)
+	require.NoError(t, err)
+
+	info := inspectAnthropicDesktopProbeCapture(parsed)
+	require.True(t, info.Observed)
+	require.Equal(t, "user", info.FirstRole)
+	require.Equal(t, "hi", info.FirstText)
+	require.Equal(t, 2, info.FirstTextLen)
+}

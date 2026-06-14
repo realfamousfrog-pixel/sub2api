@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"encoding/json"
 	"strings"
 	"unicode/utf8"
 
@@ -19,8 +20,31 @@ type anthropicDesktopProbeContentBlock struct {
 }
 
 type anthropicDesktopProbeMessage struct {
-	Role    string                              `json:"role"`
-	Content []anthropicDesktopProbeContentBlock `json:"content"`
+	Role    string                           `json:"role"`
+	Content anthropicDesktopProbeTextSource `json:"content"`
+}
+
+type anthropicDesktopProbeTextSource struct {
+	Text string
+}
+
+func (s *anthropicDesktopProbeTextSource) UnmarshalJSON(data []byte) error {
+	if s == nil {
+		return nil
+	}
+
+	var directText string
+	if err := json.Unmarshal(data, &directText); err == nil {
+		s.Text = strings.TrimSpace(directText)
+		return nil
+	}
+
+	var blocks []anthropicDesktopProbeContentBlock
+	if err := json.Unmarshal(data, &blocks); err != nil {
+		return err
+	}
+	s.Text = extractAnthropicDesktopProbeFirstText(blocks)
+	return nil
 }
 
 type anthropicDesktopProbeCapture struct {
@@ -55,7 +79,7 @@ func inspectAnthropicDesktopProbeCapture(parsed *service.ParsedRequest) anthropi
 	}
 
 	info.FirstRole = strings.TrimSpace(messages[0].Role)
-	info.FirstText = extractAnthropicDesktopProbeFirstText(messages[0].Content)
+	info.FirstText = strings.TrimSpace(messages[0].Content.Text)
 	info.FirstTextLen = utf8.RuneCountInString(info.FirstText)
 	if len(messages) == 1 && info.FirstTextLen > 0 && info.MaxTokens > 0 && info.MaxTokens <= anthropicDesktopProbeCaptureObservedMaxToks {
 		info.Observed = true
