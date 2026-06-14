@@ -177,6 +177,25 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 	// 检查是否为 Claude Code 客户端，设置到 context 中（复用已解析请求，避免二次反序列化）。
 	SetClaudeCodeClientContext(c, body, parsedReq)
 	isClaudeCodeClient := service.IsClaudeCodeClient(c.Request.Context())
+	probeCapture := inspectAnthropicDesktopProbeCapture(parsedReq, isClaudeCodeClient)
+	if probeCapture.Observed {
+		reqLog.Info("gateway.claude_desktop_probe_capture",
+			zap.String("path", c.Request.URL.Path),
+			zap.String("model", probeCapture.Model),
+			zap.Int("max_tokens", probeCapture.MaxTokens),
+			zap.Int("messages_count", probeCapture.MessagesCount),
+			zap.String("first_role", probeCapture.FirstRole),
+			zap.Int("first_text_len", probeCapture.FirstTextLen),
+			zap.String("first_text_preview", anthropicDesktopProbeCapturePreview(probeCapture.FirstText)),
+		)
+		defer func() {
+			reqLog.Info("gateway.claude_desktop_probe_capture_result",
+				zap.String("path", c.Request.URL.Path),
+				zap.String("model", probeCapture.Model),
+				zap.Int("final_status", c.Writer.Status()),
+			)
+		}()
+	}
 
 	// 版本检查：仅对 Claude Code 客户端，拒绝低于最低版本的请求
 	if !h.checkClaudeCodeVersion(c) {

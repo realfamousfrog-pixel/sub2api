@@ -2679,15 +2679,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			}
 		}
 	}
-	previousResponseIDValue := strings.TrimSpace(gjson.GetBytes(body, "previous_response_id").String())
-	preserveHTTPPreviousResponseID := previousResponseIDValue != "" &&
-		clientTransport == OpenAIClientTransportHTTP &&
-		account != nil &&
-		account.Type == AccountTypeAPIKey &&
-		account.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityResponses)
-	if wsDecision.Transport != OpenAIUpstreamTransportResponsesWebsocketV2 &&
-		gjson.GetBytes(body, "previous_response_id").Exists() &&
-		!preserveHTTPPreviousResponseID {
+	if wsDecision.Transport != OpenAIUpstreamTransportResponsesWebsocketV2 && gjson.GetBytes(body, "previous_response_id").Exists() {
 		markPatchDelete("previous_response_id")
 	}
 	if openAIRequestBodyMayContainEmptyBase64InputImage(body) {
@@ -3027,9 +3019,6 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 					return nil, decodeErr
 				}
 				if trimOpenAIEncryptedReasoningItems(decoded) {
-					if _, hasPreviousResponseID := decoded["previous_response_id"]; hasPreviousResponseID && !HasFunctionCallOutput(decoded) {
-						delete(decoded, "previous_response_id")
-					}
 					body, err = marshalOpenAIUpstreamJSON(decoded)
 					if err != nil {
 						return nil, fmt.Errorf("serialize invalid_encrypted_content retry body: %w", err)

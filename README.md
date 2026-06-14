@@ -29,6 +29,8 @@ Please read the following carefully before using this project:
 Sub2API is an AI API gateway platform designed to distribute and manage API quotas from AI product subscriptions. Users can access upstream AI services through platform-generated API Keys, while the platform handles authentication, billing, load balancing, and request forwarding.
 
 > Documentation sync rule: when code, configuration, scheduling behavior, or capability boundaries change, update this README and the affected localized docs in the same change.
+>
+> Fork branch workflow: if your fork continuously tracks upstream, keep `main` reserved for syncing `upstream/main`. Put local customization and day-to-day development on a separate integration branch (for example `integrate/...`), then merge or rebase upstream updates into that branch only after `main` has been refreshed.
 
 ## Features
 

@@ -265,7 +265,7 @@ func TestOpenAIRecoverResponsesPanic_WritesFallbackResponse(t *testing.T) {
 		}()
 	})
 
-	require.Equal(t, http.StatusServiceUnavailable, w.Code)
+	require.Equal(t, http.StatusBadGateway, w.Code)
 
 	var parsed map[string]any
 	err := json.Unmarshal(w.Body.Bytes(), &parsed)
@@ -559,7 +559,7 @@ func TestOpenAIResponses_RejectsMessageIDAsPreviousResponseID(t *testing.T) {
 	require.Contains(t, w.Body.String(), "previous_response_id must be a response.id")
 }
 
-func TestOpenAIResponses_AllowsHTTPContinuationPreviousResponseID(t *testing.T) {
+func TestOpenAIResponses_RejectsHTTPContinuationPreviousResponseID(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	w := httptest.NewRecorder()
@@ -583,9 +583,9 @@ func TestOpenAIResponses_AllowsHTTPContinuationPreviousResponseID(t *testing.T) 
 	h := newOpenAIHandlerForPreviousResponseIDValidation(t, nil)
 	h.Responses(c)
 
-	require.Equal(t, http.StatusBadGateway, w.Code)
-	require.NotContains(t, w.Body.String(), "Responses WebSocket v2")
-	require.NotContains(t, w.Body.String(), "previous_response_id is only supported")
+	require.Equal(t, http.StatusBadRequest, w.Code)
+	require.Contains(t, w.Body.String(), "Responses WebSocket v2")
+	require.Contains(t, w.Body.String(), "previous_response_id")
 }
 
 func TestOpenAIResponses_FunctionCallOutputHTTPGuidanceDoesNotSuggestPreviousResponseReuse(t *testing.T) {

@@ -11,6 +11,15 @@
 | **技术栈** | Go 后端 (Ent ORM + Gin) + Vue3 前端 (pnpm) |
 | **数据库** | PostgreSQL 16 + Redis |
 | **包管理** | 后端: go modules, 前端: **pnpm**（不是 npm） |
+| **当前集成分支** | `integrate/v0.1.130-local` |
+| **`main` 分支用途** | 仅用于同步上游 `upstream/main`，不承接本地日常开发 |
+
+### Git 分支约定
+
+- `main`：保留为上游同步基线分支，只用于接收和整理 `upstream/main` 的最新变更。
+- `integrate/v0.1.130-local`：当前本地集成分支，`sub2` 定制逻辑、兼容修复和联调验证默认先落在这里。
+- 其他本地功能分支：默认从 `integrate/v0.1.130-local` 切出，完成后再合回 `integrate/v0.1.130-local`，不要直接把日常开发改动做在 `main`。
+- 当需要跟进上游最新版本时，先更新 `main`，再把 `main` 的变化合入当前集成分支；不要跳过 `main` 直接在集成分支上对接 `upstream/main`。
 
 ## 二、本地环境配置
 
@@ -255,6 +264,33 @@ git add ent/       # 生成的文件也要提交
 
 ---
 
+### 坑 12：先抓 Claude Desktop 探活正文，再决定是否做精确映射
+
+**原则**：
+- 不要先按“短请求特征”直接改写业务请求；
+- 先在 `GatewayHandler.Messages` 入口抓取疑似桌面端探活正文；
+- 确认真实正文后，再只对那个精确内容做单独映射。
+
+**当前实现边界**：
+- 当前只做日志捕获，不改 `body`，不改账号选择，不改上游转发；
+- 当前日志观察范围收窄为：
+  - 非 Claude Code 客户端；
+  - `POST /v1/messages`；
+  - `model=claude-opus-4-8`；
+  - 单条消息；
+  - `max_tokens` 较小。
+
+**日志关键字**：
+- `gateway.claude_desktop_probe_capture`
+- `gateway.claude_desktop_probe_capture_result`
+
+**当前建议**：
+- 先从日志里确认 `first_text_preview`、`first_text_len`、`messages_count`、`max_tokens`；
+- 不要在未确认正文前修改转发 body；
+- 确认完真实探活正文后，再新增“只对该精确正文命中的映射规则”。
+
+---
+
 ### 坑 11：PR 提交前检查清单
 
 提交 PR 前务必本地验证：
@@ -287,18 +323,22 @@ psql -U sub2api -h 127.0.0.1 -d sub2api -f migration.sql
 ### Git 操作
 
 ```bash
-# 同步上游
+# 同步上游到保留分支 main
 git fetch upstream
 git checkout main
 git merge upstream/main
 git push origin main
 
-# 创建功能分支
-git checkout -b feature/xxx
+# 将最新上游基线并入当前集成分支
+git checkout integrate/v0.1.130-local
+git merge main
 
-# Rebase 到最新 main
-git fetch upstream
-git rebase upstream/main
+# 从当前集成分支创建功能分支
+git checkout -b feature/xxx integrate/v0.1.130-local
+
+# 功能分支跟进最新集成基线
+git checkout feature/xxx
+git rebase integrate/v0.1.130-local
 ```
 
 ### 前端操作
