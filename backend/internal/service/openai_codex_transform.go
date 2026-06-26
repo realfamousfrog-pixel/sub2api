@@ -654,6 +654,13 @@ func stripCodexSparkImageGenerationTools(reqBody map[string]any) bool {
 	return modified
 }
 
+// stripOpenAIResponsesImageGenerationTools keeps the legacy helper name used by
+// non-spark /responses request paths that intentionally strip client-advertised
+// image_generation tools before forwarding upstream.
+func stripOpenAIResponsesImageGenerationTools(reqBody map[string]any) bool {
+	return stripCodexSparkImageGenerationTools(reqBody)
+}
+
 func hasOpenAIInputImage(reqBody map[string]any) bool {
 	if reqBody == nil {
 		return false
