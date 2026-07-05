@@ -381,7 +381,7 @@ func (s *TokenRefreshService) recordBackgroundRefreshFailure(ctx context.Context
 	if account == nil || refreshErr == nil {
 		return
 	}
-	credentials := cloneCredentials(account.Credentials)
+	credentials := shallowCopyMap(account.Credentials)
 	now := time.Now().UTC().Format(time.RFC3339)
 	credentials["_token_refresh_last_source"] = "background"
 	credentials["_token_refresh_last_attempt_at"] = now
